@@ -209,9 +209,10 @@ são o ponto de partida do problema discutido na Seção~\ref{sec:rede}.
 \subsection{ML-KEM como mecanismo de encapsulamento de chaves}
 \label{sec:mlkem}
 
-Um KEM (Key Encapsulation Mechanism, ou mecanismo de encapsulamento de
+Esta seção segue o FIPS~203, o padrão que define o ML-KEM (NIST, 2024). Um
+KEM (Key Encapsulation Mechanism, ou mecanismo de encapsulamento de
 chaves) permite que duas partes combinem uma chave secreta usando
-criptografia de chave pública. Ele tem três algoritmos (NIST, 2024):
+criptografia de chave pública. Ele tem três algoritmos:
 \begin{itemize}
   \item $\mathsf{KeyGen}() \rightarrow (ek, dk)$: gera a chave pública
   $ek$ e a chave secreta $dk$;
@@ -252,7 +253,7 @@ executa o $\mathsf{Decaps}$. No fim, os dois têm a mesma chave $K$, de
 \subsubsection*{O problema difícil: aprendizado com erros}
 
 A segurança do ML-KEM vem do problema Module-LWE (Module Learning With
-Errors), uma generalização do problema LWE (REGEV, 2009; NIST, 2024). A
+Errors), uma generalização do problema LWE (REGEV, 2009). A
 ideia do LWE é simples. Em um sistema linear $t = As \bmod q$, com $A$ e
 $t$ públicos, é fácil encontrar o segredo $s$ por eliminação de Gauss. O
 LWE soma a esse sistema um vetor $e$ de erros pequenos:
@@ -260,20 +261,19 @@ LWE soma a esse sistema um vetor $e$ de erros pequenos:
 t = A s + e \bmod q
 \end{equation}
 Esse ruído basta para tornar o problema difícil, e acredita-se que ele
-continue difícil mesmo para computadores quânticos (NIST, 2024).
+continue difícil mesmo para computadores quânticos.
 
 No ML-KEM, os elementos de $A$, $s$ e $e$ são polinômios com 256
 coeficientes módulo $q = 3329$. No ML-KEM-768, $A$ é uma matriz
 $3 \times 3$ desses polinômios, e $s$ e $e$ são vetores de 3 polinômios com
-coeficientes pequenos, entre $-2$ e $2$ (NIST, 2024).
+coeficientes pequenos, entre $-2$ e $2$.
 
 \subsubsection*{Cifrar um bit com ruído}
 
-Por dentro, o ML-KEM usa um esquema de cifração chamado K-PKE (NIST,
-2024). A chave pública é $(A, t)$, com $t = As + e$, e a chave secreta é
-$s$. Para cifrar uma mensagem $m$, com um bit em cada coeficiente,
-sorteiam-se um vetor $y$ e erros $e_1$ e $e_2$, todos pequenos, e
-calcula-se:
+Por dentro, o ML-KEM usa um esquema de cifração chamado K-PKE. A chave
+pública é $(A, t)$, com $t = As + e$, e a chave secreta é $s$. Para cifrar
+uma mensagem $m$, com um bit em cada coeficiente, sorteiam-se um vetor $y$
+e erros $e_1$ e $e_2$, todos pequenos, e calcula-se:
 \begin{align}
 u &= A^{T} y + e_1 \\
 v &= t^{T} y + e_2 + \left\lceil q/2 \right\rfloor \cdot m
@@ -309,7 +309,7 @@ falha é de $2^{-164{,}8}$ (NIST, 2024).
 O K-PKE sozinho não resiste a um atacante ativo, que envia ciphertexts
 adulterados e observa a reação do outro lado para aprender sobre a chave
 secreta. Por isso, o ML-KEM aplica ao K-PKE a transformação de
-Fujisaki-Okamoto (NIST, 2024), resumida na Figura~\ref{fig:algos}, em que
+Fujisaki-Okamoto, resumida na Figura~\ref{fig:algos}, em que
 $G$, $H$ e $J$ são funções de hash da família SHA-3.
 
 \begin{figure}[H]
@@ -344,7 +344,7 @@ aleatoriedade da cifração vem da própria mensagem $m$. Se a comparação
 falha, ele não avisa do erro. Ele devolve uma chave pseudoaleatória, e o
 atacante não aprende nada. Essa técnica se chama rejeição implícita. Com
 essa construção, considera-se que o ML-KEM atinge a segurança IND-CCA2,
-que cobre esse tipo de ataque (NIST, 2024).
+que cobre esse tipo de ataque.
 
 \subsubsection*{De onde vêm os 1184 e 1088 bytes}
 
@@ -363,7 +363,7 @@ No X25519, cada lado envia só um ponto da curva, de 32~bytes. Ou seja, a
 diferença de tamanho vem de trocar um único número por vetores de
 polinômios. A Tabela~\ref{tab:params} mostra os três conjuntos de
 parâmetros do padrão, da menor categoria de segurança para a maior. O NIST
-recomenda o ML-KEM-768 como padrão (NIST, 2024), e é ele que o grupo
+recomenda o ML-KEM-768 como padrão, e é ele que o grupo
 \texttt{X25519MLKEM768} usa.
 
 \begin{table}[H]
@@ -428,13 +428,12 @@ dois segredos.
 
 O custo do híbrido sobre o ML-KEM puro é pequeno: 32~bytes a mais em cada
 mensagem (Tabela~\ref{tab:tamanhos}) e uma operação de curva elíptica. Por
-isso, ele é o modo padrão do Chrome e do OpenSSL (ADRIAN et al., 2024;
-OPENSSL PROJECT, 2025). Como o ML-KEM também pode ser usado sozinho
-(Seção~\ref{sec:mini}), o experimento compara as três formas. A
-expectativa é que o híbrido e o ML-KEM puro tenham desempenho de rede
-parecido, e que a diferença apareça em relação ao X25519, por causa dos
-mais de mil bytes que o ML-KEM acrescenta. A próxima seção explica por que
-esses bytes viram atraso.
+isso, ele é o modo padrão do Chrome e do OpenSSL. Como o ML-KEM também pode
+ser usado sozinho (Seção~\ref{sec:mini}), o experimento compara as três
+formas. A expectativa é que o híbrido e o ML-KEM puro tenham desempenho de
+rede parecido, e que a diferença apareça em relação ao X25519, por causa
+dos mais de mil bytes que o ML-KEM acrescenta. A próxima seção explica por
+que esses bytes viram atraso.
 
 
 \subsection{Tamanho de chave como problema de rede}
