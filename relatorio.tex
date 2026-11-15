@@ -211,30 +211,22 @@ são o ponto de partida do problema discutido na Seção~\ref{sec:rede}.
 
 Um KEM (Key Encapsulation Mechanism, ou mecanismo de encapsulamento de
 chaves) permite que duas partes combinem uma chave secreta usando
-criptografia de chave pública. Ele é formado por três algoritmos (NIST,
-2024):
+criptografia de chave pública. Ele tem três algoritmos (NIST, 2024):
 \begin{itemize}
-  \item $\mathsf{KeyGen}() \rightarrow (ek, dk)$: gera um par de chaves,
-  formado pela chave de encapsulamento $ek$, que é pública, e pela chave
-  de desencapsulamento $dk$, que fica secreta;
-  \item $\mathsf{Encaps}(ek) \rightarrow (K, c)$: usando só a chave
-  pública, gera uma chave secreta compartilhada $K$ e um ciphertext $c$,
-  que ``encapsula'' essa chave;
-  \item $\mathsf{Decaps}(dk, c) \rightarrow K'$: usando a chave secreta,
-  recupera a chave a partir do ciphertext.
+  \item $\mathsf{KeyGen}() \rightarrow (ek, dk)$: gera a chave pública
+  $ek$ e a chave secreta $dk$;
+  \item $\mathsf{Encaps}(ek) \rightarrow (K, c)$: com a chave pública,
+  gera uma chave compartilhada $K$ e um ciphertext $c$;
+  \item $\mathsf{Decaps}(dk, c) \rightarrow K$: com a chave secreta,
+  recupera $K$ a partir de $c$.
 \end{itemize}
-O KEM é correto se $K' = K$, e é seguro se quem vê apenas $ek$ e $c$ não
-consegue obter nenhuma informação sobre $K$.
 
-Na troca Diffie-Hellman, como no X25519, os dois lados fazem a mesma
-coisa: cada um gera um par de chaves, envia a parte pública e combina a sua
-chave privada com a chave pública do outro. No KEM, os papéis são
-diferentes, como mostra a Figura~\ref{fig:kem}. No TLS~1.3, o cliente
-executa o $\mathsf{KeyGen}$ e envia $ek$ no \texttt{key\_share} do
-\texttt{ClientHello}. O servidor executa o $\mathsf{Encaps}$ com essa chave
-e devolve $c$ no \texttt{ServerHello}. Por fim, o cliente executa o
-$\mathsf{Decaps}$ e obtém a mesma chave $K$, de 32~bytes, que ocupa o lugar
-do segredo do Diffie-Hellman na derivação das chaves da sessão.
+No Diffie-Hellman, como no X25519, os dois lados fazem a mesma operação.
+No KEM, os papéis são diferentes (Figura~\ref{fig:kem}): o cliente gera o
+par de chaves e envia $ek$ no \texttt{ClientHello}, o servidor executa o
+$\mathsf{Encaps}$ e devolve $c$ no \texttt{ServerHello}, e o cliente
+executa o $\mathsf{Decaps}$. No fim, os dois têm a mesma chave $K$, de
+32~bytes, que entra no lugar do segredo do Diffie-Hellman.
 
 \begin{figure}[H]
 \centering
@@ -259,85 +251,66 @@ do segredo do Diffie-Hellman na derivação das chaves da sessão.
 
 \subsubsection*{O problema difícil: aprendizado com erros}
 
-A segurança do ML-KEM vem de um problema de reticulados chamado
-Module-LWE (Module Learning With Errors) (NIST, 2024). A versão mais
-simples dele, o LWE, foi proposta por Regev (2009). Para entender a ideia,
-considere um sistema linear $t = A s \bmod q$, em que a matriz $A$ e o
-vetor $t$ são públicos e o vetor $s$ é secreto. Com eliminação de Gauss,
-encontrar $s$ é fácil. O LWE acrescenta um vetor $e$ de erros pequenos:
+A segurança do ML-KEM vem do problema Module-LWE (Module Learning With
+Errors), uma generalização do problema LWE (REGEV, 2009; NIST, 2024). A
+ideia do LWE é simples. Em um sistema linear $t = As \bmod q$, com $A$ e
+$t$ públicos, é fácil encontrar o segredo $s$ por eliminação de Gauss. O
+LWE soma a esse sistema um vetor $e$ de erros pequenos:
 \begin{equation}
 t = A s + e \bmod q
 \end{equation}
-Esse pequeno ruído basta para tornar o problema difícil. Não se conhece
-algoritmo, clássico ou quântico, que encontre $s$, ou mesmo que distinga
-$t$ de um vetor aleatório, de forma eficiente quando os parâmetros são bem
-escolhidos (REGEV, 2009; NIST, 2024).
+Esse ruído basta para tornar o problema difícil, e acredita-se que ele
+continue difícil mesmo para computadores quânticos (NIST, 2024).
 
-No Module-LWE, cada elemento de $A$, $s$ e $e$ deixa de ser um número e
-passa a ser um polinômio de grau menor que $n = 256$, com coeficientes
-módulo $q = 3329$, e as multiplicações são feitas módulo $X^{256} + 1$. No
-ML-KEM-768, $A$ é uma matriz $3 \times 3$ desses polinômios, e $s$ e $e$
-são vetores de 3 polinômios com coeficientes pequenos, entre $-2$ e $2$
-(NIST, 2024). Essa estrutura tem duas vantagens práticas: a matriz $A$
-inteira é gerada a partir de uma semente de 32~bytes, e os polinômios podem
-ser multiplicados rapidamente com a NTT (Number Theoretic Transform), uma
-variante da FFT para inteiros módulo $q$. É por isso que o ML-KEM é rápido
-de calcular.
+No ML-KEM, os elementos de $A$, $s$ e $e$ são polinômios com 256
+coeficientes módulo $q = 3329$. No ML-KEM-768, $A$ é uma matriz
+$3 \times 3$ desses polinômios, e $s$ e $e$ são vetores de 3 polinômios com
+coeficientes pequenos, entre $-2$ e $2$ (NIST, 2024).
 
 \subsubsection*{Cifrar um bit com ruído}
 
-Internamente, o ML-KEM usa um esquema de cifração de chave pública chamado
-K-PKE (NIST, 2024). A chave pública é $(A, t)$, com $t = As + e$, e a chave
-privada é $s$. Para cifrar uma mensagem $m$, com um bit em cada
-coeficiente, quem cifra sorteia um vetor $y$ e erros $e_1$ e $e_2$, todos
-pequenos, e calcula:
+Por dentro, o ML-KEM usa um esquema de cifração chamado K-PKE (NIST,
+2024). A chave pública é $(A, t)$, com $t = As + e$, e a chave secreta é
+$s$. Para cifrar uma mensagem $m$, com um bit em cada coeficiente,
+sorteiam-se um vetor $y$ e erros $e_1$ e $e_2$, todos pequenos, e
+calcula-se:
 \begin{align}
 u &= A^{T} y + e_1 \\
 v &= t^{T} y + e_2 + \left\lceil q/2 \right\rfloor \cdot m
 \end{align}
-O ciphertext é o par $(u, v)$. O bit $m$ vira $0$ ou
-$\lceil q/2 \rfloor = 1665$ e fica escondido em um valor que parece
-aleatório. Para decifrar, quem tem $s$ calcula:
+O ciphertext é o par $(u, v)$. Quem tem $s$ decifra calculando:
 \begin{equation}
 w = v - s^{T} u = \underbrace{e^{T} y + e_2 - s^{T} e_1}_{\text{ruído pequeno}} + \left\lceil q/2 \right\rfloor \cdot m
 \label{eq:ruido}
 \end{equation}
-O termo $s^{T} A^{T} y$ se cancela, porque aparece tanto em $t^{T} y$
-quanto em $s^{T} u$. Sobra só um ruído formado por produtos de valores
-pequenos, e por isso $w$ fica perto de $0$ se $m = 0$, ou perto de $q/2$ se
-$m = 1$. Basta arredondar para o valor mais próximo. Quem não conhece $s$
-não consegue fazer esse cancelamento, e para essa pessoa $(u, v)$ é apenas
-mais uma instância do Module-LWE.
+O termo $s^{T} A^{T} y$ aparece em $t^{T} y$ e em $s^{T} u$, e por isso se
+cancela. Sobra só um ruído pequeno: $w$ fica perto de $0$ se o bit é $0$, e
+perto de $\lceil q/2 \rfloor = 1665$ se o bit é $1$. Basta arredondar. Quem
+não conhece $s$ não consegue fazer esse cancelamento.
 
-Um exemplo pequeno mostra o cancelamento. Usando $q = 3329$, mas com
-números inteiros no lugar dos polinômios e dimensão 2:
+Um exemplo com números pequenos mostra a conta. Ele usa $q = 3329$, mas
+com inteiros no lugar dos polinômios e dimensão 2:
 \begin{itemize}
   \item \textbf{Chaves:} $A = \begin{pmatrix} 1234 & 567 \\ 2890 & 41 \end{pmatrix}$,
   $s = (1, -2)$ e $e = (2, -1)$, então $t = As + e = (102,\ 2807)$;
-  \item \textbf{Cifração de $m = 1$:} com $y = (-1, 1)$, $e_1 = (1, 0)$ e
-  $e_2 = -2$, obtém-se $u = A^{T} y + e_1 = (1657,\ 2803)$ e
-  $v = t^{T} y + e_2 + 1665 \equiv 1039$;
-  \item \textbf{Decifração:} $w = v - s^{T} u = 1039 - (1657 - 2 \cdot 2803)
+  \item \textbf{Cifrar $m = 1$:} com $y = (-1, 1)$, $e_1 = (1, 0)$ e
+  $e_2 = -2$, obtém-se $u = (1657,\ 2803)$ e $v = 1039$;
+  \item \textbf{Decifrar:} $w = v - s^{T} u = 1039 - (1657 - 2 \cdot 2803)
   \equiv 1659 \pmod{3329}$.
 \end{itemize}
-Como 1659 está muito mais perto de 1665 do que de 0, o bit decifrado é
-$m = 1$. A diferença de $-6$ é exatamente o ruído da
-Equação~\eqref{eq:ruido}: $e^{T} y + e_2 - s^{T} e_1 = (-2 - 1) - 2 - 1 =
--6$. A decifração só erraria se o ruído passasse de $q/4 \approx 832$, e os
-parâmetros do ML-KEM-768 são escolhidos para que isso aconteça com
-probabilidade de cerca de $2^{-164}$ (AVANZI et al., 2021). Para diminuir o
-tamanho do ciphertext, o ML-KEM também descarta os bits menos
-significativos dos coeficientes de $u$ e $v$ (compressão), o que só
-acrescenta um pouco mais de ruído (NIST, 2024).
+Como 1659 está perto de 1665, o bit decifrado é $1$. A diferença de $-6$ é
+exatamente o ruído da Equação~\eqref{eq:ruido}:
+$e^{T} y + e_2 - s^{T} e_1 = -3 - 2 - 1 = -6$. A decifração só erraria com
+um ruído maior que $q/4 \approx 832$, e no ML-KEM-768 a probabilidade de
+falha é de $2^{-164{,}8}$ (NIST, 2024).
 
-\subsubsection*{Do K-PKE ao ML-KEM: KeyGen, Encaps e Decaps}
+\subsubsection*{Do K-PKE ao ML-KEM}
 
-O K-PKE sozinho não é seguro contra um atacante ativo. Esse atacante pode
-enviar ciphertexts adulterados e observar como o outro lado reage para
-aprender, aos poucos, sobre a chave privada. Para evitar isso, o ML-KEM
-aplica ao K-PKE uma variante da transformação de Fujisaki-Okamoto (NIST,
-2024), resumida na Figura~\ref{fig:algos}, em que $G$, $H$ e $J$ são
-funções de hash baseadas no SHA-3.
+O K-PKE sozinho não resiste a um atacante ativo, que envia ciphertexts
+adulterados e observa a reação do outro lado para aprender sobre a chave
+secreta. Por isso, o ML-KEM aplica ao K-PKE a transformação de
+Fujisaki-Okamoto (NIST, 2024), resumida na Figura~\ref{fig:algos}, em que
+$G$, $H$ e $J$ são funções de hash da família SHA-3.
 
 \begin{figure}[H]
 \centering
@@ -365,94 +338,74 @@ funções de hash baseadas no SHA-3.
 \fonte{Adaptado de NIST (2024).}
 \end{figure}
 
-Dois detalhes explicam a segurança. Primeiro, tanto a chave $K$ quanto a
-aleatoriedade $r$ usada na cifração são derivadas, por hash, da mensagem
-$m$. Assim, a cifração fica determinística a partir de $m$, e o
-$\mathsf{Decaps}$ consegue cifrar de novo e conferir se o ciphertext
-recebido foi gerado de forma honesta. Segundo, se a conferência falha, o
-$\mathsf{Decaps}$ não devolve um erro, mas uma chave pseudoaleatória
-$J(z \,\|\, c)$, que depende do segredo $z$. Essa técnica, chamada de
-rejeição implícita, impede o atacante de saber se o ciphertext adulterado
-foi aceito, e ele não aprende nada sobre $s$. No TLS, uma chave errada só
-aparece mais tarde, quando a verificação do \texttt{Finished} falha. Com
-isso, o ML-KEM atinge a segurança IND-CCA2, a noção mais forte
-normalmente exigida de um KEM (NIST, 2024).
+A ideia é que o $\mathsf{Decaps}$ confere o ciphertext recebido: ele
+decifra, cifra de novo e compara. Isso é possível porque toda a
+aleatoriedade da cifração vem da própria mensagem $m$. Se a comparação
+falha, ele não avisa do erro. Ele devolve uma chave pseudoaleatória, e o
+atacante não aprende nada. Essa técnica se chama rejeição implícita. Com
+essa construção, considera-se que o ML-KEM atinge a segurança IND-CCA2,
+que cobre esse tipo de ataque (NIST, 2024).
 
 \subsubsection*{De onde vêm os 1184 e 1088 bytes}
 
-Os tamanhos que pesam na rede saem diretamente dessa estrutura. A chave
-pública $ek$ é formada por $t$, um vetor de 3 polinômios com 256
-coeficientes de 12~bits cada (já que $q = 3329 < 2^{12}$), mais a semente
-de 32~bytes que gera $A$:
+Os tamanhos que pesam na rede saem dessa estrutura. A chave pública $ek$
+tem o vetor $t$, com 3 polinômios de 256 coeficientes de 12~bits cada,
+mais uma semente de 32~bytes, a partir da qual se gera a matriz $A$:
 \begin{equation}
-|ek| = \frac{3 \times 256 \times 12}{8} + 32 = 1152 + 32 = 1184 \text{ bytes}
+|ek| = \frac{3 \times 256 \times 12}{8} + 32 = 1184 \text{ bytes}
 \end{equation}
-O ciphertext tem $u$, com 3 polinômios comprimidos para $d_u = 10$~bits por
-coeficiente, e $v$, com 1 polinômio comprimido para $d_v = 4$~bits:
+No ciphertext, o ML-KEM guarda menos bits por coeficiente para economizar
+espaço: 10~bits nos 3 polinômios de $u$ e 4~bits no polinômio $v$.
 \begin{equation}
-|c| = \frac{3 \times 256 \times 10}{8} + \frac{256 \times 4}{8} = 960 + 128 = 1088 \text{ bytes}
+|c| = \frac{3 \times 256 \times 10}{8} + \frac{256 \times 4}{8} = 1088 \text{ bytes}
 \end{equation}
-Sem a compressão, o ciphertext teria $4 \times 384 = 1536$~bytes. Já no
-X25519, cada lado envia apenas um ponto da curva, codificado em 32~bytes.
-Ou seja, a diferença de tamanho não é um detalhe de implementação: ela vem
-de trocar um único número por vetores de polinômios. A
-Tabela~\ref{tab:params} resume os três conjuntos de parâmetros do padrão.
-O NIST recomenda o ML-KEM-768 como conjunto padrão, por oferecer uma boa
-margem de segurança com custo razoável (MOODY et al., 2026), e é ele que o
-grupo \texttt{X25519MLKEM768} usa.
+No X25519, cada lado envia só um ponto da curva, de 32~bytes. Ou seja, a
+diferença de tamanho vem de trocar um único número por vetores de
+polinômios. A Tabela~\ref{tab:params} mostra os três conjuntos de
+parâmetros do padrão, da menor categoria de segurança para a maior. O NIST
+recomenda o ML-KEM-768 como padrão (NIST, 2024), e é ele que o grupo
+\texttt{X25519MLKEM768} usa.
 
 \begin{table}[H]
 \centering
 \caption{Conjuntos de parâmetros do ML-KEM e tamanhos, em bytes}
 \label{tab:params}
-\begin{tabular}{lcccccc}
+\begin{tabular}{lcccc}
 \toprule
-Conjunto & $k$ & $(d_u, d_v)$ & $ek$ & $dk$ & $c$ & Categoria NIST \\
+Conjunto & $k$ & $ek$ & $c$ & Categoria NIST \\
 \midrule
-ML-KEM-512  & 2 & (10, 4) & 800  & 1632 & 768  & 1 \\
-ML-KEM-768  & 3 & (10, 4) & 1184 & 2400 & 1088 & 3 \\
-ML-KEM-1024 & 4 & (11, 5) & 1568 & 3168 & 1568 & 5 \\
+ML-KEM-512  & 2 & 800  & 768  & 1 \\
+ML-KEM-768  & 3 & 1184 & 1088 & 3 \\
+ML-KEM-1024 & 4 & 1568 & 1568 & 5 \\
 \bottomrule
 \end{tabular}
-\fonte{NIST (2024). A chave compartilhada $K$ tem 32~bytes nos três. As categorias 1, 3 e 5 equivalem à dificuldade de quebrar o AES-128, o AES-192 e o AES-256 por busca exaustiva.}
+\fonte{NIST (2024).}
 \end{table}
 
 
 \subsection{Por que usar o modo híbrido}
 \label{sec:hibrido}
 
-Se o ML-KEM resiste a computadores quânticos, uma pergunta natural é por
-que não usá-lo sozinho. A resposta é que ele é muito mais novo que o
-X25519. As curvas elípticas são estudadas há décadas, enquanto o ML-KEM
-foi padronizado em 2024, e algoritmos pós-quânticos ainda podem ter falhas
-desconhecidas, tanto no próprio esquema quanto nas implementações.
+Se o ML-KEM resiste a computadores quânticos, por que não usá-lo sozinho?
+Porque ele é novo. As curvas elípticas são estudadas há décadas, e o
+ML-KEM só foi padronizado em 2024. Um exemplo do risco é o SIKE, outro KEM
+pós-quântico, que chegou à quarta rodada do processo do NIST em 2022.
+Poucas semanas depois, um ataque sem computador quântico quebrou seus
+parâmetros de nível~1 em cerca de uma hora, em um único núcleo de
+processador (CASTRYCK; DECRU, 2023). Nada indica que o mesmo vá acontecer
+com o ML-KEM, mas o caso mostra que a confiança em um algoritmo novo leva
+tempo.
 
-O SIKE é um exemplo desse risco. Ele era um KEM baseado em isogenias de
-curvas elípticas, com chaves pequenas, e chegou à quarta rodada do
-processo do NIST em 2022. Poucas semanas depois, Castryck e Decru
-divulgaram um ataque clássico, ou seja, sem computador quântico, que
-recuperava a chave secreta dos parâmetros de nível~1 do SIKE em cerca de
-uma hora, usando um único núcleo de processador (CASTRYCK; DECRU, 2023). Nada indica que o mesmo
-vá acontecer com o ML-KEM, mas o caso mostra que a confiança em um
-algoritmo pós-quântico ainda está sendo construída.
+O modo híbrido combina os dois algoritmos, de forma que a conexão continua
+segura enquanto pelo menos um deles não for quebrado (STEBILA; FLUHRER;
+GUERON, 2026). O ML-KEM protege contra o computador quântico, e o X25519
+garante pelo menos a segurança que o TLS já tem hoje.
 
-O modo híbrido resolve esse dilema ao combinar os dois algoritmos, de forma
-que o segredo final continua seguro enquanto pelo menos um deles não for
-quebrado (STEBILA; FLUHRER; GUERON, 2026). Contra um atacante com
-computador quântico, a proteção vem do ML-KEM. Se alguém descobrir um
-ataque ao ML-KEM, o X25519 continua garantindo pelo menos a segurança que
-o TLS já tem hoje. Ou seja, migrar para o híbrido não deixa a conexão
-menos segura do que antes.
-
-No grupo \texttt{X25519MLKEM768}, como visto na Seção~\ref{sec:tls13}, os
-dois segredos de 32~bytes são concatenados, e o resultado de 64~bytes
-entra no lugar do segredo do Diffie-Hellman na derivação de chaves do
-TLS~1.3 (Figura~\ref{fig:hibrido}). Essa derivação passa o segredo pelo
-HKDF-Extract, uma função baseada em HMAC (RESCORLA, 2026, seção 7.1). Para
-prever a saída, o atacante precisaria conhecer a entrada inteira, ou seja,
-os dois segredos. Se apenas um deles for descoberto, a outra parte continua
-desconhecida e a saída continua imprevisível (STEBILA; FLUHRER; GUERON,
-2026).
+No grupo \texttt{X25519MLKEM768}, os dois segredos de 32~bytes são
+concatenados, e o resultado entra na derivação de chaves do TLS~1.3
+(Figura~\ref{fig:hibrido}), que começa com a função HKDF-Extract (RESCORLA,
+2026, seção 7.1). Para prever as chaves, o atacante precisaria conhecer os
+dois segredos.
 
 \begin{figure}[H]
 \centering
@@ -473,21 +426,15 @@ desconhecida e a saída continua imprevisível (STEBILA; FLUHRER; GUERON,
 \fonte{Elaborado pelos autores com base em Kwiatkowski et al. (2026).}
 \end{figure}
 
-O custo do híbrido em relação ao ML-KEM puro é pequeno: o X25519 acrescenta
-32~bytes em cada mensagem (Tabela~\ref{tab:tamanhos}) e uma operação de
-curva elíptica, que é rápida. A desvantagem é a complexidade, já que as
-duas implementações precisam existir e estar corretas. Por esse equilíbrio,
-o híbrido é o modo adotado por padrão no Chrome e no OpenSSL (ADRIAN et
-al., 2024; OPENSSL PROJECT, 2025). Mesmo assim, o ML-KEM também pode ser
-usado sozinho, como mostra o mini-exemplo da Seção~\ref{sec:mini}.
-
-Por isso, o experimento inclui as duas formas. Comparar o híbrido com o
-ML-KEM puro mostra quanto do custo vem do X25519 extra, e comparar os dois
-com o X25519 mostra o custo da migração em si. Como os dois grupos
-pós-quânticos diferem em apenas 32~bytes por mensagem, a expectativa é que
-tenham desempenho de rede parecido, e que a diferença grande apareça em
-relação ao X25519, por causa dos mais de mil bytes que o ML-KEM acrescenta.
-A próxima seção explica por que esses bytes viram atraso.
+O custo do híbrido sobre o ML-KEM puro é pequeno: 32~bytes a mais em cada
+mensagem (Tabela~\ref{tab:tamanhos}) e uma operação de curva elíptica. Por
+isso, ele é o modo padrão do Chrome e do OpenSSL (ADRIAN et al., 2024;
+OPENSSL PROJECT, 2025). Como o ML-KEM também pode ser usado sozinho
+(Seção~\ref{sec:mini}), o experimento compara as três formas. A
+expectativa é que o híbrido e o ML-KEM puro tenham desempenho de rede
+parecido, e que a diferença apareça em relação ao X25519, por causa dos
+mais de mil bytes que o ML-KEM acrescenta. A próxima seção explica por que
+esses bytes viram atraso.
 
 
 \subsection{Tamanho de chave como problema de rede}
@@ -821,12 +768,6 @@ Acesso em: 15 nov. 2026.}
 control}. RFC 5681. Internet Engineering Task Force, set. 2009. Disponível
 em: \url{https://www.rfc-editor.org/info/rfc5681}. Acesso em: 15 nov.
 2026.}
-
-\refitem{AVANZI, R. et al. \textbf{CRYSTALS-Kyber}: algorithm
-specifications and supporting documentation (version 3.02). 4 ago. 2021.
-Disponível em:
-\url{https://pq-crystals.org/kyber/data/kyber-specification-round3-20210804.pdf}.
-Acesso em: 15 nov. 2026.}
 
 \refitem{CASTRYCK, W.; DECRU, T. An efficient key recovery attack on SIDH.
 In: HAZAY, C.; STAM, M. (ed.). \textbf{Advances in Cryptology --
