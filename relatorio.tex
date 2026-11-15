@@ -55,90 +55,40 @@ Florianópolis\\
 
 \section{Introdução}
 
-O TLS (Transport Layer Security) protege a maior parte das conexões na
-internet, como as do HTTPS. No TLS~1.3, cliente e servidor combinam uma
-chave secreta por meio de uma troca de chaves baseada em curvas elípticas,
-em geral o X25519 (LANGLEY; HAMBURG; TURNER, 2016), cuja segurança depende
-da dificuldade do problema do logaritmo discreto. Shor (1997) mostrou que
-um computador quântico suficientemente grande resolve esse problema, e
-também a fatoração de inteiros, em tempo polinomial. Ou seja, um
-computador desses quebraria não só o X25519, mas também o RSA e o
-Diffie-Hellman clássico, que são a base da criptografia de chave pública
-usada hoje.
+O TLS (Transport Layer Security) é o protocolo que protege a maior parte
+das conexões na internet, como as do HTTPS. No TLS~1.3, cliente e servidor
+combinam a chave da sessão com uma troca de chaves em curvas elípticas, em
+geral o X25519 (LANGLEY; HAMBURG; TURNER, 2016). Shor (1997) mostrou que um
+computador quântico suficientemente grande consegue quebrar essa troca de
+chaves, assim como o RSA.
 
-Esse computador ainda não existe, mas as estimativas de quão grande ele
-precisa ser vêm caindo. Gidney (2025), por exemplo, estimou que uma chave
-RSA de 2048~bits poderia ser fatorada em menos de uma semana por um
-computador quântico com menos de um milhão de qubits ruidosos, contra os
-20~milhões de qubits que o mesmo grupo estimava em 2019. Mesmo sem saber
-quando esse computador vai existir, a ameaça já é atual para a troca de
-chaves: um atacante pode gravar hoje o tráfego cifrado e guardá-lo até
-conseguir quebrar a troca, ataque conhecido como \textit{harvest now,
-decrypt later} (``colha agora, decifre depois''), ilustrado na
-Figura~\ref{fig:hndl}.
+Esse computador ainda não existe, mas o risco já é atual. Um atacante pode
+gravar hoje o tráfego cifrado e decifrá-lo quando o computador quântico
+existir, ataque conhecido como \textit{harvest now, decrypt later}
+(Figura~\ref{fig:hndl}). Mosca (2018) resume o problema: se o tempo que um
+dado precisa ficar secreto, somado ao tempo da migração, for maior que o
+tempo até esse computador existir, o dado já está em risco.
 
-Mosca (2018) resume esse risco em uma desigualdade. Se $x$ é o tempo pelo
-qual um dado precisa continuar secreto, $y$ é o tempo necessário para
-migrar os sistemas e $z$ é o tempo até existir um computador quântico
-capaz de quebrar a criptografia atual, então há um problema sempre que
-\begin{equation}
-x + y > z
-\end{equation}
-Dados que precisam ficar secretos por muitos anos, como registros médicos
-ou informações de governo, já podem estar nessa situação, mesmo que $z$
-ainda seja de uma ou duas décadas. Por isso, a migração não pode esperar o
-computador quântico aparecer.
+Por isso, a migração já começou. Em 2024, o NIST publicou o ML-KEM, seu
+padrão pós-quântico para troca de chaves (NIST, 2024), e hoje recomenda
+abandonar os algoritmos vulneráveis até 2035 (MOODY et al., 2026). No TLS,
+o Chrome e o OpenSSL já usam por padrão uma troca de chaves híbrida, que
+combina o X25519 com um algoritmo pós-quântico (ADRIAN et al., 2024;
+OPENSSL PROJECT, 2025).
 
-Para enfrentar esse problema, o NIST (National Institute of Standards and
-Technology) conduziu um processo público para escolher algoritmos
-pós-quânticos, isto é, algoritmos que rodam em computadores comuns, mas
-resistem a ataques de computadores quânticos. Em agosto de 2024, ele
-publicou o primeiro padrão de encapsulamento de chaves, o ML-KEM (NIST,
-2024), derivado do CRYSTALS-Kyber (AVANZI et al., 2021). Em outubro de
-2026, o NIST definiu o cronograma da migração: os algoritmos de chave
-pública vulneráveis a computadores quânticos passam a ser desaconselhados
-(\textit{deprecated}) depois de 2030 e deixam de ser aceitos nos seus
-padrões depois de 2035 (MOODY et al., 2026).
+O protocolo escolhido para este trabalho é o TLS~1.3 com troca de chaves
+baseada no ML-KEM. O motivo da escolha é um contraste: o ML-KEM é rápido de
+calcular, mas suas chaves são muito maiores. A chave que o cliente envia
+passa de 32~bytes no X25519 para 1216~bytes no grupo híbrido
+\texttt{X25519MLKEM768} (KWIATKOWSKI et al., 2026), e a mensagem pode
+deixar de caber em um único pacote. Em redes com perda ou latência alta,
+cada pacote a mais é mais uma chance de retransmissão e atraso.
 
-No TLS, essa migração já começou. O Chrome passou a usar por padrão, em
-2024, uma troca de chaves híbrida, que combina o X25519 com um algoritmo
-pós-quântico (ADRIAN et al., 2024). O OpenSSL faz o mesmo desde a
-versão~3.5 (OPENSSL PROJECT, 2025), e a IETF padronizou o grupo híbrido
-\texttt{X25519MLKEM768} na RFC~10024 (KWIATKOWSKI et al., 2026). Antes
-disso, o projeto Open Quantum Safe (OQS) teve um papel importante: suas
-bibliotecas, como a \texttt{liboqs} e o \texttt{oqs-provider}, permitiram
-testar algoritmos pós-quânticos no OpenSSL antes da padronização (OPEN
-QUANTUM SAFE, [s.d.]), inclusive em experimentos de rede como o de Paquin,
-Stebila e Tamvada (2020).
-
-O protocolo escolhido para este trabalho é, então, o TLS~1.3 com troca de
-chaves pós-quântica baseada no ML-KEM. A escolha vem de um contraste: o
-ML-KEM é rápido de calcular, mas suas mensagens são muito maiores. A chave
-que o cliente envia passa de 32~bytes no X25519 para 1216~bytes no grupo
-híbrido, 38 vezes mais (KWIATKOWSKI et al., 2026). Ou seja, o custo da
-migração sai do processador e vai para a rede, e uma mensagem que antes
-cabia com folga em um pacote passa a ficar perto do limite ou a ocupar
-dois. Em uma rede boa, essa diferença quase não aparece. Já em redes com
-perda de pacotes ou latência alta, cada pacote a mais é mais uma chance de
-perda e de retransmissão. Essa é uma questão prática, que pode ser medida
-em laboratório e que liga a teoria do ML-KEM ao seu impacto real.
-
-Assim, o objetivo deste trabalho é medir o custo, no nível da rede, de
-trocar a troca de chaves clássica do TLS~1.3 por uma pós-quântica. Serão
-comparadas três configurações, X25519 (clássica), \texttt{X25519MLKEM768}
-(híbrida) e ML-KEM-768 puro, em uma rede emulada com o \texttt{tc netem},
-variando a taxa de perda de pacotes e o atraso. Em cada cenário, serão
-medidos o tempo de handshake, os bytes trafegados e o número de pacotes e
-de retransmissões.
-
-O restante deste relatório está organizado da seguinte forma. A
-Seção~\ref{sec:desenvolvimento} apresenta a parte teórica: o handshake do
-TLS~1.3 (Seção~\ref{sec:tls13}), o funcionamento do ML-KEM como KEM
-(Seção~\ref{sec:mlkem}), o motivo do modo híbrido
-(Seção~\ref{sec:hibrido}), por que o tamanho das chaves vira um problema de
-rede (Seção~\ref{sec:rede}) e um mini-exemplo com a captura de handshakes
-reais (Seção~\ref{sec:mini}). A Seção~3 descreve o experimento que será
-executado na próxima etapa.
+O objetivo deste trabalho é medir esse custo na rede. Para isso, serão
+comparadas três configurações, X25519, \texttt{X25519MLKEM768} e ML-KEM-768
+puro, em uma rede emulada com o \texttt{tc netem}, com diferentes taxas de
+perda e atrasos. A Seção~\ref{sec:desenvolvimento} apresenta a parte
+teórica e um mini-exemplo, e a Seção~3 descreve o experimento.
 
 
 \section{Desenvolvimento}
@@ -893,10 +843,6 @@ TCP's initial window}. RFC 6928. Internet Engineering Task Force, abr.
 2013. Disponível em: \url{https://www.rfc-editor.org/info/rfc6928}. Acesso
 em: 15 nov. 2026.}
 
-\refitem{GIDNEY, C. \textbf{How to factor 2048 bit RSA integers with less
-than a million noisy qubits}. arXiv:2505.15917, maio 2025. Disponível em:
-\url{https://arxiv.org/abs/2505.15917}. Acesso em: 15 nov. 2026.}
-
 \refitem{KAMPANAKIS, P.; CHILDS-KLEIN, W. The impact of data-heavy,
 post-quantum TLS 1.3 on the Time-To-Last-Byte of real-world connections.
 In: WORKSHOP ON MEASUREMENTS, ATTACKS, AND DEFENSES FOR THE WEB (MADWeb),
@@ -925,9 +871,6 @@ DOI: 10.1109/MSP.2018.3761723.}
 \refitem{NATIONAL INSTITUTE OF STANDARDS AND TECHNOLOGY (NIST).
 \textbf{Module-lattice-based key-encapsulation mechanism standard}. FIPS
 203. Gaithersburg: NIST, ago. 2024. DOI: 10.6028/NIST.FIPS.203.}
-
-\refitem{OPEN QUANTUM SAFE. \textbf{Open Quantum Safe}. [s.d.]. Disponível
-em: \url{https://openquantumsafe.org/}. Acesso em: 15 nov. 2026.}
 
 \refitem{OPENSSL PROJECT. \textbf{OpenSSL 3.5 series release notes}. 2025.
 Disponível em: \url{https://openssl-library.org/news/openssl-3.5-notes}.
