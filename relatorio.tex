@@ -454,6 +454,268 @@ Por isso, o experimento deve incluir as duas configurações para observar
 os dois efeitos separadamente.
 
 
+
+
+% ---------------------------------------------------------------------------
+% SEÇÃO 3 — PLANEJAMENTO EXPERIMENTAL (PESSOA 3)
+% ---------------------------------------------------------------------------
+\section{Experimento}
+\label{sec:experimento}
+
+O experimento tem como objetivo avaliar o efeito do
+estabelecimento de chaves no desempenho do \textit{handshake} TLS~1.3 sob
+condições controladas de atraso e perda de pacotes. Serão comparados o
+X25519 (clássico), o \texttt{X25519MLKEM768} (híbrido) e o
+\texttt{MLKEM768} (pós-quântico). A hipótese, desenvolvida na
+Seção~\ref{sec:rede}, é que mensagens maiores podem exigir mais segmentos
+TCP e, em redes degradadas, aumentar a exposição a perdas e os tempos de
+recuperação. Essa relação será investigada por medição; não se pressupõe
+que todos os \texttt{ClientHello} híbridos sejam segmentados, como mostrou
+o exemplo da Seção~\ref{sec:mini}.
+
+\subsection{Ambiente experimental}
+\label{subsec:ambiente}
+
+Será utilizado um ambiente Linux com cliente e servidor TLS~1.3 executados em
+containers isolados, conectados por uma rede virtual Docker. O OpenSSL,
+preferencialmente na versão 3.5 ou superior, realizará a negociação TLS,
+pois essa linha oferece suporte nativo aos três grupos considerados
+(OPENSSL PROJECT, 2025). A disponibilidade efetiva dos grupos e a versão
+instalada serão verificadas antes dos ensaios. O uso do
+\texttt{oqs-provider}, previsto na proposta inicial, ficará reservado a
+casos em que seja necessário suporte não disponibilizado pelo OpenSSL
+nativo.
+
+As condições de rede serão controladas pelo utilitário Linux
+\texttt{tc netem}, que permite introduzir atraso e perda probabilística
+nas interfaces de rede (LINUX MAN-PAGES PROJECT). O tráfego será
+registrado com \texttt{tcpdump} em arquivos \texttt{.pcap} e inspecionado
+no Wireshark, de modo a relacionar o tempo das negociações com o volume
+transmitido e as retransmissões observadas. Scripts Python serão usados
+para percorrer os cenários, registrar cada execução e processar os
+dados.
+
+\begin{table}[H]
+\centering
+\caption{Ferramentas previstas para o experimento}
+\label{tab:ferramentas-experimento}
+\small
+\begin{tabular}{p{3.4cm}p{9.4cm}}
+\toprule
+Ferramenta & Finalidade \\
+\midrule
+Linux e Docker Compose & Execução e organização do cliente e do servidor em rede virtual. \\
+OpenSSL 3.5 ou superior & Negociação TLS~1.3 com os grupos de troca de chaves selecionados. \\
+\texttt{tc netem} & Emulação controlada de perda e atraso de pacotes. \\
+\texttt{tcpdump} e Wireshark & Captura e inspeção dos segmentos TCP e das mensagens TLS. \\
+Python & Automação, armazenamento e análise das medições. \\
+\bottomrule
+\end{tabular}
+\fonte{Elaborado pelos autores.}
+\end{table}
+
+Para tornar as comparações consistentes, serão mantidos constantes o
+protocolo TLS~1.3, o certificado de autenticação do servidor, a suíte
+criptográfica de proteção dos registros e os parâmetros do ambiente que
+não constituem variáveis do experimento. Cada tentativa deverá realizar
+um \textit{handshake} completo, sem retomada de sessão. Também serão
+registradas as versões das ferramentas, o sistema operacional e as
+configurações das interfaces, incluindo MTU e MSS observados.
+
+\subsection{Matriz de testes e métricas}
+\label{subsec:matriz}
+
+A matriz experimental combina três grupos criptográficos, quatro taxas de
+perda e três valores de atraso. Os valores de atraso serão aplicados
+\emph{por direção}, com a mesma configuração no caminho de ida e no de
+volta. Assim, um atraso artificial de 50~ms em cada direção representa
+aproximadamente 100~ms adicionais ao tempo de ida e volta, além da
+latência natural do ambiente. A perda será configurada segundo o modelo
+probabilístico do \texttt{netem}. A Tabela~\ref{tab:matriz-experimento}
+resume as variáveis.
+
+\begin{table}[H]
+\centering
+\caption{Matriz planejada para os testes TLS~1.3}
+\label{tab:matriz-experimento}
+\small
+\begin{tabular}{p{4cm}p{9cm}}
+\toprule
+Dimensão & Valores \\
+\midrule
+Grupo criptográfico & X25519; \texttt{X25519MLKEM768}; \texttt{MLKEM768} \\
+Perda de pacotes & 0\%, 1\%, 5\% e 10\% \\
+Atraso por direção & 10, 50 e 150~ms \\
+Repetições & 30 tentativas por combinação \\
+\bottomrule
+\end{tabular}
+\fonte{Elaborado pelos autores com base na proposta do experimento.}
+\end{table}
+
+A matriz contém $3\times4\times3=36$ cenários; com 30 tentativas por
+cenário, estão previstas $36\times30=1080$ tentativas de conexão. As
+30 repetições são um ponto de partida para observar a variabilidade,
+mas não garantem, isoladamente, significância estatística. Poderá ser
+realizado ainda um cenário de referência sem atraso e sem perda
+artificiais, caso os recursos e o tempo permitam.
+
+As variáveis de resposta e seus métodos de observação são descritos na
+Tabela~\ref{tab:metricas-experimento}. Os resultados serão registrados
+por tentativa, incluindo as falhas, sem considerar apenas as conexões
+bem-sucedidas.
+
+\begin{table}[H]
+\centering
+\caption{Métricas planejadas e critérios de coleta}
+\label{tab:metricas-experimento}
+\small
+\begin{tabular}{p{3.9cm}p{1.7cm}p{7.3cm}}
+\toprule
+Métrica & Unidade & Critério de observação \\
+\midrule
+Duração do handshake & ms & Intervalo medido no cliente, desde o início da tentativa até a confirmação do handshake completo. \\
+Volume transmitido & bytes & Quantidade de dados associada à negociação, obtida nas capturas. \\
+Segmentos TCP & número & Segmentos observados durante cada conexão. \\
+Retransmissões TCP & número & Retransmissões identificadas nas capturas de tráfego. \\
+Taxa de sucesso & \% & Proporção de tentativas concluídas antes do limite de tempo definido. \\
+\bottomrule
+\end{tabular}
+\fonte{Elaborado pelos autores.}
+\end{table}
+
+A medição temporal precisará distinguir a duração observada pelo cliente
+do custo de inicialização do programa utilizado para estabelecer a
+conexão. Esse critério será validado no ensaio piloto, antes da coleta
+completa. Um limite de tempo para tentativas malsucedidas também será
+fixado e documentado. Para cada cenário serão calculados média, mediana,
+desvio padrão e, quando a quantidade de observações permitir, percentil
+95 dos tempos de conexão concluída. A taxa de falhas será apresentada
+separadamente, evitando que a exclusão dos \textit{timeouts} produza uma
+interpretação incorreta dos resultados.
+
+\subsection{Procedimento experimental e pseudocódigo}
+\label{subsec:procedimento}
+
+Primeiro, serão verificadas as versões das ferramentas, o suporte aos
+grupos criptográficos e a negociação TLS~1.3 em uma rede sem degradação.
+Após esse ensaio piloto, a automação aplicará cada combinação de atraso,
+perda e grupo criptográfico. O cliente realizará novas conexões,
+registrando a duração, o estado de sucesso ou falha e o identificador da
+captura correspondente. Ao término de cada cenário, as regras de
+emulação serão removidas, inclusive em caso de erro.
+
+O Algoritmo~\ref{alg:coleta} apresenta o pseudocódigo planejado.
+
+\begin{figure}[H]
+\centering
+\caption{Pseudocódigo para automação da matriz experimental}
+\label{alg:coleta}
+\begin{minipage}{0.97\linewidth}
+\small
+\ttfamily
+\begin{tabbing}
+xx\=xx\=xx\=xx\=\kill
+ALGORITMOS $\leftarrow$ [X25519, X25519MLKEM768, MLKEM768]\\
+PERDAS $\leftarrow$ [0, 1, 5, 10]\%\\
+ATRASOS $\leftarrow$ [10, 50, 150] ms\\
+REPETICOES $\leftarrow$ 30\\[3pt]
+Verificar ambiente, grupos e certificados\\
+Preparar arquivo de resultados e ensaio piloto\\
+\textbf{para cada} algoritmo \textbf{em} ALGORITMOS:\\
+\> Configurar cliente e servidor para o algoritmo\\
+\> \textbf{para cada} perda \textbf{em} PERDAS:\\
+\>\> \textbf{para cada} atraso \textbf{em} ATRASOS:\\
+\>\>\> Aplicar perda e atraso nas interfaces de rede\\
+\>\>\> \textbf{para} repeticao $\leftarrow$ 1 \textbf{ate} REPETICOES:\\
+\>\>\>\> Iniciar captura individual e cronometro\\
+\>\>\>\> Estabelecer nova conexao TLS 1.3\\
+\>\>\>\> Registrar duracao, sucesso ou timeout\\
+\>\>\>\> Encerrar e identificar a captura\\
+\>\>\> Remover regras de emulacao (mesmo se falhar)\\[3pt]
+Extrair metricas de trafego e consolidar por cenario\\
+Gerar tabelas, graficos e estatisticas
+\end{tabbing}
+\end{minipage}
+\fonte{Elaborado pelos autores.}
+\end{figure}
+
+Os resultados serão organizados em arquivos CSV, com campos para grupo
+criptográfico, taxa de perda, atraso, número da repetição, duração,
+resultado da negociação e caminho do arquivo de captura. A extração de
+métricas de tráfego deverá restringir a análise à conexão correspondente,
+e o procedimento de filtragem será documentado para permitir a
+reprodução das medições.
+
+\subsection{Topologia do ambiente}
+\label{subsec:topologia}
+
+A Figura~\ref{fig:topologia-experimento} apresenta a topologia lógica
+planejada. Cliente e servidor estabelecem uma conexão TCP protegida por
+TLS~1.3 sobre a rede virtual. O \texttt{tc netem} não é um serviço
+intermediário independente: suas regras serão aplicadas às interfaces
+pertinentes, em ambos os sentidos. O \texttt{tcpdump} fará a captura do
+tráfego para análise posterior no Wireshark.
+
+\begin{figure}[H]
+\centering
+\caption{Topologia lógica proposta para os testes em rede degradada}
+\label{fig:topologia-experimento}
+\begin{tikzpicture}[>=Stealth, font=\small,
+  endpoint/.style={draw=classico, rounded corners=3pt, fill=classico!8,
+    minimum width=3.3cm, minimum height=1.2cm, align=center},
+  monitor/.style={draw=pq, rounded corners=3pt, fill=pq!8,
+    minimum width=4.0cm, minimum height=0.9cm, align=center}]
+  \node[endpoint] (cli) at (0,0) {Cliente TLS~1.3\\OpenSSL};
+  \node[endpoint] (srv) at (10,0) {Servidor TLS~1.3\\OpenSSL};
+  \draw[<->, thick] (cli.east) -- node[above, align=center]
+    {Rede virtual Docker\\TCP / TLS~1.3} (srv.west);
+  \node[monitor] (netem) at (5,-1.9) {\texttt{tc netem} nas interfaces\\atraso + perda nos dois sentidos};
+  \draw[dashed, ->, pq] (netem.north) -- (5,-0.28);
+  \node[monitor] (cap) at (5,-3.5) {Capturas \texttt{tcpdump} (PCAP)\\análise posterior no Wireshark};
+  \draw[->, thick, pq] (netem.south) -- (cap.north);
+\end{tikzpicture}
+\fonte{Elaborado pelos autores.}
+\end{figure}
+
+Com essa configuração, a análise poderá contrastar os custos observados
+dos grupos clássicos, híbridos e pós-quânticos em condições equivalentes,
+verificando se diferenças de tamanho e segmentação se refletem em
+retransmissões, duração do handshake ou taxa de falhas. As medições e sua
+discussão serão apresentadas na entrega final do trabalho.
+
+
+% DECLARAÇÃO DE USO DE IA
+\section*{Declaração de uso de Inteligência Artificial}
+\addcontentsline{toc}{section}{Declaração de uso de Inteligência Artificial}
+
+Durante a elaboração deste relatório parcial, foram utilizadas ferramentas de
+inteligência artificial generativa como apoio à escolha e à organização do
+tema, ao planejamento experimental e à redação do documento. As informações e
+sugestões fornecidas foram avaliadas pelos autores, que permanecem
+responsáveis pela verificação das fontes, pelas decisões técnicas e pelo
+conteúdo final do trabalho. A Tabela~\ref{tab:uso-ia} apresenta as ferramentas
+utilizadas e suas respectivas finalidades.
+
+\begin{table}[H]
+\centering
+\caption{Ferramentas de inteligência artificial utilizadas no trabalho}
+\label{tab:uso-ia}
+\begin{tabular}{p{3.8cm}p{9.2cm}}
+\toprule
+\textbf{Ferramenta} & \textbf{Finalidade} \\
+\midrule
+Google Gemini & Sugestão e exploração de possíveis temas para o trabalho,
+contribuindo para a definição da proposta sobre TLS pós-quântico em redes
+degradadas. \\
+\addlinespace
+ChatGPT (OpenAI) & Apoio à estruturação do planejamento experimental, à
+definição das métricas de avaliação, à elaboração do pseudocódigo, à revisão
+textual e à organização e formatação do relatório em \LaTeX{}. \\
+\bottomrule
+\end{tabular}
+\fonte{Elaborado pelos autores (2026).}
+\end{table}
+
 % REFERÊNCIAS
 \section*{Referências}
 \begingroup
@@ -509,6 +771,11 @@ em: \url{https://www.rfc-editor.org/info/rfc7748}. Acesso em: 15 nov.
 \refitem{NATIONAL INSTITUTE OF STANDARDS AND TECHNOLOGY (NIST).
 \textbf{Module-lattice-based key-encapsulation mechanism standard}. FIPS
 203. Gaithersburg: NIST, ago. 2024. DOI: 10.6028/NIST.FIPS.203.}
+
+\refitem{LINUX MAN-PAGES PROJECT. \textbf{tc-netem(8): Linux manual
+page}. [s.d.]. Disponível em:
+\url{https://man7.org/linux/man-pages/man8/tc-netem.8.html}.
+Acesso em: 15 nov. 2026.}
 
 \refitem{OPENSSL PROJECT. \textbf{OpenSSL 3.5 series release notes}. 2025.
 Disponível em: \url{https://openssl-library.org/news/openssl-3.5-notes}.
