@@ -18,6 +18,7 @@
 \usepackage{etoolbox}
 \AtBeginEnvironment{tikzpicture}{\linespread{1}\selectfont}
 \usepackage{url}
+\urlstyle{same}
 \usepackage[hidelinks]{hyperref}
 
 \setstretch{1.5}
@@ -41,6 +42,8 @@ DEPARTAMENTO DE INFORMÁTICA E ESTATÍSTICA\\
 CIÊNCIAS DA COMPUTAÇÃO\par
 \vspace{\stretch{1}}
 \textbf{TLS Pós-Quântico em Redes Degradadas}\par
+\vspace{0.4cm}
+Relatório parcial\par
 \vspace{\stretch{1}}
 INE5429 - Segurança em Computação\\
 Ana Clara Gomes Guimarães - 23250590\\
@@ -83,15 +86,15 @@ Este trabalho estuda o TLS~1.3 com troca de chaves baseada no ML-KEM,
 escolhido porque, embora seja rápido de calcular, ele usa chaves muito
 maiores que as das curvas elípticas. A chave que o cliente envia passa de
 32~bytes no X25519 para 1216~bytes no grupo híbrido
-\texttt{X25519MLKEM768} (KWIATKOWSKI et al., 2026), o que pode fazer com
+X25519MLKEM768 (KWIATKOWSKI et al., 2026), o que pode fazer com
 que a mensagem deixe de caber em um único pacote. Em redes com perda ou
 latência alta, cada pacote a mais representa mais uma chance de
 retransmissão e, consequentemente, de atraso no estabelecimento da
 conexão.
 
 O objetivo do trabalho é medir esse custo na rede, comparando três
-configurações (X25519, \texttt{X25519MLKEM768} e ML-KEM-768 puro) em uma
-rede emulada com o \texttt{tc netem}, sob diferentes taxas de perda e
+configurações (X25519, X25519MLKEM768 e ML-KEM-768 puro) em uma
+rede emulada com o tc netem, sob diferentes taxas de perda e
 atrasos. A Seção~\ref{sec:desenvolvimento} apresenta a parte teórica e um
 mini-exemplo com uma captura real do handshake, e a
 Seção~\ref{sec:experimento} descreve o experimento planejado.
@@ -116,14 +119,14 @@ segredo para cifrar os dados da aplicação.
 Uma das principais mudanças do TLS~1.3 em relação às versões anteriores é
 que o handshake completo leva apenas uma ida e volta (1-RTT) entre cliente
 e servidor. Isso só é possível porque o cliente envia sua parte da troca de
-chaves já na primeira mensagem, o \texttt{ClientHello}, sem esperar o
+chaves já na primeira mensagem, o ClientHello, sem esperar o
 servidor dizer qual algoritmo prefere. Essa parte vai dentro de uma
-extensão chamada \texttt{key\_share} (RESCORLA, 2026, seção 4.3.8), e é nela que a chave pós-quântica entra, como mostra a
+extensão chamada key\_share (RESCORLA, 2026, seção 4.3.8), e é nela que a chave pós-quântica entra, como mostra a
 Figura~\ref{fig:handshake}.
 
 \begin{figure}[H]
 \centering
-\caption{Handshake completo do TLS 1.3, com o tamanho do \texttt{key\_share} na troca clássica (X25519) e na híbrida (X25519MLKEM768)}
+\caption{Handshake completo do TLS 1.3, com o tamanho do key\_share na troca clássica (X25519) e na híbrida (X25519MLKEM768)}
 \label{fig:handshake}
 \begin{tikzpicture}[>=Stealth, font=\small]
   \node at (0,0) {Cliente};
@@ -131,19 +134,19 @@ Figura~\ref{fig:handshake}.
   \draw[thick] (0,-0.3) -- (0,-8.4);
   \draw[thick] (10,-0.3) -- (10,-8.4);
   % ClientHello
-  \node at (5,-0.75) {\texttt{ClientHello}};
+  \node at (5,-0.75) {ClientHello};
   \draw[->, very thick, pq] (0,-1.1) -- (10,-1.4);
-  \node[pq] at (5,-1.75) {\footnotesize \texttt{key\_share}: 32 bytes (clássico) $\rightarrow$ 1216 bytes (híbrido)};
+  \node[pq] at (5,-1.75) {\footnotesize key\_share: 32 bytes (clássico) $\rightarrow$ 1216 bytes (híbrido)};
   % ServerHello
-  \node at (5,-2.6) {\texttt{ServerHello}};
+  \node at (5,-2.6) {ServerHello};
   \draw[->, very thick, pq] (10,-2.95) -- (0,-3.25);
-  \node[pq] at (5,-3.6) {\footnotesize \texttt{key\_share}: 32 bytes $\rightarrow$ 1120 bytes};
+  \node[pq] at (5,-3.6) {\footnotesize key\_share: 32 bytes $\rightarrow$ 1120 bytes};
   % Flight cifrado
-  \node[classico] at (5,-4.45) {\footnotesize \texttt{\{EncryptedExtensions, Certificate,}};
-  \node[classico] at (5,-4.85) {\footnotesize \texttt{CertificateVerify, Finished\}}};
+  \node[classico] at (5,-4.45) {\footnotesize \{EncryptedExtensions, Certificate,};
+  \node[classico] at (5,-4.85) {\footnotesize CertificateVerify, Finished\}};
   \draw[->, classico] (10,-5.2) -- (0,-5.5);
   % Finished do cliente
-  \node[classico] at (5,-6.4) {\footnotesize \texttt{\{Finished\}} + dados da aplicação};
+  \node[classico] at (5,-6.4) {\footnotesize \{Finished\} + dados da aplicação};
   \draw[->, classico] (0,-6.75) -- (10,-7.05);
   \node[gray] at (5,-7.9) {\footnotesize \{\,\} = mensagens já cifradas com chaves derivadas da troca};
 \end{tikzpicture}
@@ -151,27 +154,27 @@ Figura~\ref{fig:handshake}.
 \end{figure}
 
 O servidor escolhe um dos algoritmos oferecidos pelo cliente e responde com
-a sua própria parte da troca no \texttt{ServerHello}. A partir daí, os dois
+a sua própria parte da troca no ServerHello. A partir daí, os dois
 lados calculam o mesmo segredo, que é usado para derivar as chaves da
 sessão (RESCORLA, 2026, seção 7.1). Todas as mensagens seguintes já vão
 cifradas: o servidor envia seu certificado, uma assinatura sobre o
-handshake (\texttt{CertificateVerify}) e um código de autenticação de
-mensagem (\texttt{Finished}), e o cliente responde com o seu próprio
-\texttt{Finished}, já podendo enviar dados.
+handshake (CertificateVerify) e um código de autenticação de
+mensagem (Finished), e o cliente responde com o seu próprio
+Finished, já podendo enviar dados.
 
 Como o cliente precisa adivinhar qual algoritmo o servidor vai aceitar, ele
 pode errar. Nesse caso, o servidor responde com um
-\texttt{HelloRetryRequest} (RESCORLA, 2026, seção 4.2.4) e o cliente
+HelloRetryRequest (RESCORLA, 2026, seção 4.2.4) e o cliente
 precisa recomeçar o handshake, o que custa uma ida e volta a mais (AHMAD;
 JAMAL; KRIVIT, 2026). Para evitar isso, o cliente pode enviar chaves de
-mais de um algoritmo no mesmo \texttt{ClientHello}, mas isso deixa a
+mais de um algoritmo no mesmo ClientHello, mas isso deixa a
 mensagem maior. O OpenSSL~3.5, por exemplo, envia por padrão duas chaves:
 uma híbrida pós-quântica e uma X25519 clássica (OPENSSL PROJECT, 2025).
 
 Outro ponto importante é que, no TLS~1.3, o sigilo e a autenticação vêm de
 lugares diferentes. O sigilo depende do segredo obtido na troca de chaves,
-enquanto a autenticação depende da assinatura do \texttt{CertificateVerify}
-e do \texttt{Finished} (RESCORLA, 2026, seções 4.5.2 e 4.5.3). Essa
+enquanto a autenticação depende da assinatura do CertificateVerify
+e do Finished (RESCORLA, 2026, seções 4.5.2 e 4.5.3). Essa
 separação faz diferença diante de um computador quântico, como mostra a
 Figura~\ref{fig:hndl}: um atacante pode gravar o tráfego hoje e decifrá-lo
 no futuro, quando conseguir quebrar a troca de chaves (harvest now,
@@ -199,11 +202,11 @@ apenas a troca.
 \end{figure}
 
 Para o TLS, cada algoritmo de troca de chaves é um ``grupo'' negociado. No
-caso de um KEM, o \texttt{key\_share} do cliente leva a chave
+caso de um KEM, o key\_share do cliente leva a chave
 de encapsulamento e o do servidor leva o ciphertext. A RFC~9954
 descreve como combinar dois algoritmos numa troca híbrida (STEBILA;
 FLUHRER; GUERON, 2026), e a RFC~10024 define o grupo
-\texttt{X25519MLKEM768} (KWIATKOWSKI et al., 2026): o cliente envia sua
+X25519MLKEM768 (KWIATKOWSKI et al., 2026): o cliente envia sua
 chave ML-KEM-768 seguida da sua chave X25519, o servidor responde com o
 ciphertext seguido da sua chave X25519, e os dois segredos de
 32~bytes são concatenados em um único segredo de 64~bytes. Esses tamanhos
@@ -228,8 +231,8 @@ criptografia de chave pública. Ele tem três algoritmos:
 
 No Diffie-Hellman, como no X25519, os dois lados fazem a mesma operação.
 No KEM, os papéis são diferentes (Figura~\ref{fig:kem}): o cliente gera o
-par de chaves e envia $ek$ no \texttt{ClientHello}, o servidor executa o
-$\mathsf{Encaps}$ e devolve $c$ no \texttt{ServerHello}, e o cliente
+par de chaves e envia $ek$ no ClientHello, o servidor executa o
+$\mathsf{Encaps}$ e devolve $c$ no ServerHello, e o cliente
 executa o $\mathsf{Decaps}$. No fim, os dois têm a mesma chave $K$, de
 32~bytes, que entra no lugar do segredo do Diffie-Hellman.
 
@@ -244,10 +247,10 @@ executa o $\mathsf{Decaps}$. No fim, os dois têm a mesma chave $K$, de
   \draw[thick] (10,-0.3) -- (10,-4.4);
   \node[op] at (0,-0.9) {$(ek, dk) \leftarrow \mathsf{KeyGen}()$};
   \draw[->, very thick, pq] (0,-1.5) -- (10,-1.8);
-  \node[pq, above] at (5,-1.6) {\texttt{ClientHello}: $ek$ (1184 bytes)};
+  \node[pq, above] at (5,-1.6) {ClientHello: $ek$ (1184 bytes)};
   \node[op] at (10,-2.4) {$(K, c) \leftarrow \mathsf{Encaps}(ek)$};
   \draw[->, very thick, pq] (10,-3.0) -- (0,-3.3);
-  \node[pq, above] at (5,-3.1) {\texttt{ServerHello}: $c$ (1088 bytes)};
+  \node[pq, above] at (5,-3.1) {ServerHello: $c$ (1088 bytes)};
   \node[op] at (0,-3.9) {$K \leftarrow \mathsf{Decaps}(dk, c)$};
   \node[gray] at (5,-4.9) {\footnotesize os dois lados têm a mesma $K$ (32 bytes), usada para derivar as chaves da sessão};
 \end{tikzpicture}
@@ -370,7 +373,7 @@ No X25519, por outro lado, cada lado envia só um ponto da curva, de
 explica a diferença de tamanho. A Tabela~\ref{tab:params} mostra os três conjuntos de
 parâmetros do padrão, da menor categoria de segurança para a maior. O NIST
 recomenda o ML-KEM-768 como padrão, e é ele que o grupo
-\texttt{X25519MLKEM768} usa.
+X25519MLKEM768 usa.
 
 \begin{table}[H]
 \centering
@@ -407,7 +410,7 @@ segura enquanto pelo menos um deles não for quebrado (STEBILA; FLUHRER;
 GUERON, 2026). O ML-KEM protege contra o computador quântico, e o X25519
 garante pelo menos a segurança que o TLS já tem hoje.
 
-No grupo \texttt{X25519MLKEM768}, os dois segredos de 32~bytes são
+No grupo X25519MLKEM768, os dois segredos de 32~bytes são
 concatenados, e o resultado entra na derivação de chaves do TLS~1.3
 (Figura~\ref{fig:hibrido}), que começa com a função HKDF-Extract (RESCORLA,
 2026, seção 7.1), de modo que, para prever as chaves, o atacante
@@ -415,7 +418,7 @@ precisaria conhecer os dois segredos.
 
 \begin{figure}[H]
 \centering
-\caption{Combinação dos dois segredos no grupo \texttt{X25519MLKEM768}}
+\caption{Combinação dos dois segredos no grupo X25519MLKEM768}
 \label{fig:hibrido}
 \begin{tikzpicture}[>=Stealth, font=\small, caixa/.style={draw, rounded corners=2pt, align=center, inner sep=5pt}]
   \node[caixa, draw=pq, text=pq] (mlkem) at (0,0) {ML-KEM-768\\segredo: 32 bytes};
@@ -480,30 +483,30 @@ procura evitar ao respeitar o MSS.
 \subsubsection*{De um para dois segmentos}
 
 Com X25519, a chave do cliente tem só 32~bytes (LANGLEY; HAMBURG; TURNER,
-2016), e o \texttt{ClientHello} inteiro cabe com folga em um segmento. Com
-\texttt{X25519MLKEM768}, ela passa a ter 1216~bytes (KWIATKOWSKI et al.,
+2016), e o ClientHello inteiro cabe com folga em um segmento. Com
+X25519MLKEM768, ela passa a ter 1216~bytes (KWIATKOWSKI et al.,
 2026), o que sozinho ainda cabe, mas somado ao resto da mensagem pode
-passar do limite, dependendo de quantas outras extensões o cliente envia. Ristic (2026) observou um \texttt{ClientHello} de 2117~bytes no
+passar do limite, dependendo de quantas outras extensões o cliente envia. Ristic (2026) observou um ClientHello de 2117~bytes no
 Chrome, que precisa então de dois segmentos (Figura~\ref{fig:barras}). A
-equipe do Chrome relatou que essa divisão do \texttt{ClientHello} em dois
+equipe do Chrome relatou que essa divisão do ClientHello em dois
 pacotes aumentou em 4\% a mediana da latência dos handshakes no Chrome para
 desktop (ADRIAN et al., 2024).
 
 \begin{figure}[H]
 \centering
-\caption{Tamanho do \texttt{key\_share} e do \texttt{ClientHello} em relação ao limite de um segmento}
+\caption{Tamanho do key\_share e do ClientHello em relação ao limite de um segmento}
 \label{fig:barras}
 \begin{tikzpicture}[font=\small, x=0.0045cm]
   % key_share X25519
-  \node[left] at (0,2.4) {\texttt{key\_share} X25519};
+  \node[left] at (0,2.4) {key\_share X25519};
   \fill[classico] (0,2.2) rectangle (32,2.6);
   \node[right] at (40,2.4) {32 B};
   % key_share híbrido
-  \node[left] at (0,1.5) {\texttt{key\_share} híbrido};
+  \node[left] at (0,1.5) {key\_share híbrido};
   \fill[pq] (0,1.3) rectangle (1216,1.7);
   \node[right] at (1225,1.5) {1216 B};
   % ClientHello Chrome
-  \node[left] at (0,0.6) {\texttt{ClientHello} (Chrome)};
+  \node[left] at (0,0.6) {ClientHello (Chrome)};
   \fill[pq!55] (0,0.4) rectangle (2117,0.8);
   \node[right] at (2125,0.6) {2117 B};
   % MSS
@@ -518,13 +521,13 @@ handshake, discutidas a seguir.
 
 \subsubsection*{1. Mais segmentos, mais chance de perda}
 Se cada segmento é perdido de forma independente com probabilidade $p$
-(que é o modelo de perda do \texttt{tc netem}, usado no
+(que é o modelo de perda do tc netem, usado no
 experimento), a chance de perder pelo menos um entre $n$ segmentos é:
 \begin{equation}
 P(\text{perda}) = 1 - (1-p)^n
 \end{equation}
 Por exemplo, com 5\% de perda, a chance de algo dar errado no
-\texttt{ClientHello} clássico (1 segmento) é de 5\%, mas no híbrido (2
+ClientHello clássico (1 segmento) é de 5\%, mas no híbrido (2
 segmentos) sobe para $1 - 0{,}95^2 = 9{,}75\%$, quase o dobro. A
 Tabela~\ref{tab:perda} mostra o mesmo cálculo para as taxas de perda do
 experimento.
@@ -560,20 +563,20 @@ de duas vezes o RTT (CHENG et al., 2021, seção 7.2).
 
 \begin{figure}[H]
 \centering
-\caption{Recuperação de perda em uma transferência longa e no \texttt{ClientHello} híbrido}
+\caption{Recuperação de perda em uma transferência longa e no ClientHello híbrido}
 \label{fig:cauda}
 \begin{tikzpicture}[font=\small, seg/.style={draw, minimum width=1.1cm, minimum height=0.6cm}]
   \node[anchor=west] at (0,1.2) {(a) Transferência longa};
   \node[seg] at (0.6,0.4) {1};
   \node[seg] at (1.8,0.4) {2};
-  \node[seg, fill=perda!70, text=white] at (3.0,0.4) {3 \texttt{x}};
+  \node[seg, fill=perda!70, text=white] at (3.0,0.4) {3 x};
   \node[seg] at (4.2,0.4) {4};
   \node[seg] at (5.4,0.4) {5};
   \node[seg] at (6.6,0.4) {6};
   \node[anchor=west, text=green!40!black, align=left] at (7.4,0.4) {4, 5 e 6 geram 3 ACKs duplicados:\\retransmissão em cerca de 1 RTT};
-  \node[anchor=west] at (0,-0.9) {(b) \texttt{ClientHello} híbrido};
+  \node[anchor=west] at (0,-0.9) {(b) ClientHello híbrido};
   \node[seg, minimum width=1.6cm, draw=pq] at (0.85,-1.7) {CH 1/2};
-  \node[seg, minimum width=1.6cm, fill=perda!70, text=white] at (2.6,-1.7) {CH 2/2 \texttt{x}};
+  \node[seg, minimum width=1.6cm, fill=perda!70, text=white] at (2.6,-1.7) {CH 2/2 x};
   \node[anchor=west, text=perda, align=left] at (3.6,-1.7) {nada chega depois, então não há ACKs duplicados:\\espera TLP ($\approx$ 2 RTT) ou RTO (1 s)};
 \end{tikzpicture}
 \fonte{Elaborado pelos autores com base em Allman, Paxson e Blanton (2009) e Cheng et al. (2021).}
@@ -582,12 +585,12 @@ de duas vezes o RTT (CHENG et al., 2021, seção 7.2).
 Para ter uma ideia do custo, considere uma rede com RTT de 50~ms. Sem
 perdas, a aplicação começa a enviar dados depois de 2~RTTs, um para o
 handshake do TCP e outro para o do TLS (KAMPANAKIS; CHILDS-KLEIN, 2024), ou
-seja, cerca de 100~ms. Se o segundo segmento do \texttt{ClientHello} se
+seja, cerca de 100~ms. Se o segundo segmento do ClientHello se
 perde, a TLP acrescenta cerca de mais 100~ms, dobrando o tempo, e, se a
 recuperação depender do RTO, o handshake passa de 1~segundo. Em uma
 estimativa simplificada, multiplicando a chance de perda pelo custo da
 TLP, com 5\% de perda o atraso médio extra seria de cerca de
-$0{,}05 \times 100 = 5$~ms no \texttt{ClientHello} clássico e de
+$0{,}05 \times 100 = 5$~ms no ClientHello clássico e de
 $0{,}0975 \times 100 \approx 9{,}8$~ms no híbrido. Essa média, porém, não mostra o principal efeito, que aparece nos casos
 piores, já que poucas conexões perdem um segmento, mas cada uma delas fica
 muito mais lenta.
@@ -597,7 +600,7 @@ Logo depois de abrir a conexão, o TCP só pode enviar um número limitado de
 segmentos antes de receber o primeiro ACK. A RFC~6928 recomenda uma janela
 inicial de até 10~segmentos, limitada a 14\,600~bytes (CHU et al., 2013,
 seção 2), ou seja, $10 \times 1460 = 14\,600$~bytes. Se a resposta do
-servidor (do \texttt{ServerHello} até o \texttt{Finished}, incluindo os
+servidor (do ServerHello até o Finished, incluindo os
 certificados) passar desse valor, ele precisa esperar um ACK antes de
 continuar, o que acrescenta um RTT inteiro (RISTIC, 2026). A chave
 híbrida do servidor ocupa 1120~bytes, cerca de 7,7\% dessa janela, então
@@ -607,10 +610,10 @@ certificados são várias vezes maiores.
 
 \subsubsection*{O problema na prática}
 
-Embora o TLS sempre tenha permitido um \texttt{ClientHello} dividido em
+Embora o TLS sempre tenha permitido um ClientHello dividido em
 mais de um segmento, muitos servidores e equipamentos de rede assumiam que
 a mensagem chegaria inteira em uma única leitura. Com o
-\texttt{ClientHello} pós-quântico, esse erro antigo passou a aparecer com
+ClientHello pós-quântico, esse erro antigo passou a aparecer com
 frequência: em vez de recusar o grupo desconhecido e usar o X25519, esses
 servidores simplesmente derrubam a conexão (TLDR.FAIL, [s.d.]). A
 Cloudflare relata que, em um estudo anterior, cerca de 0,34\% dos
@@ -630,7 +633,7 @@ com perda ou instáveis podem sofrer um impacto maior.
 \subsubsection*{Hipótese}
 
 A partir dessa análise, a hipótese a ser testada no experimento é que,
-sem perda, a diferença entre X25519 e \texttt{X25519MLKEM768} deve ser
+sem perda, a diferença entre X25519 e X25519MLKEM768 deve ser
 pequena, já que o custo está em bytes e não em idas e voltas. Conforme a
 perda aumenta, as mensagens que passam a ocupar dois segmentos devem
 aumentar a chance de uma perda no handshake e, com ela, os casos mais lentos da
@@ -649,7 +652,7 @@ acordo com as especificações.
 
 \begin{table}[H]
 \centering
-\caption{Tamanho do \texttt{key\_share} de cada lado, em bytes}
+\caption{Tamanho do key\_share de cada lado, em bytes}
 \label{tab:tamanhos}
 \begin{tabular}{lccl}
 \toprule
@@ -664,10 +667,10 @@ X25519MLKEM768 & 1216 & 1120 & parte ML-KEM + parte X25519 \\
 \end{table}
 
 Trocar o X25519 pelo híbrido, portanto, acrescenta $1216 - 32 = 1184$~bytes
-ao \texttt{ClientHello} e $1120 - 32 = 1088$~bytes ao \texttt{ServerHello}.
-Comparando com o MSS de 1460~bytes, só o \texttt{key\_share} híbrido já
+ao ClientHello e $1120 - 32 = 1088$~bytes ao ServerHello.
+Comparando com o MSS de 1460~bytes, só o key\_share híbrido já
 ocupa $1216 / 1460 \approx 83\%$ de um segmento, sobrando cerca de
-244~bytes para todo o resto do \texttt{ClientHello}, que também carrega
+244~bytes para todo o resto do ClientHello, que também carrega
 versão, números aleatórios, lista de cifras e outras extensões.
 
 Para confirmar isso na prática, foram capturados handshakes TLS~1.3 entre
@@ -687,7 +690,7 @@ resume o que foi observado no Wireshark.
 \footnotesize
 \begin{tabular}{lcccc}
 \toprule
-Configuração & \texttt{ClientHello} & Segmentos & \texttt{ServerHello} & Resposta do servidor \\
+Configuração & ClientHello & Segmentos & ServerHello & Resposta do servidor \\
  & (bytes) & do CH & (bytes) & (bytes / segmentos) \\
 \midrule
 X25519 & 217 & 1 & 127 & 764 / 1 \\
@@ -699,14 +702,14 @@ Padrão OpenSSL (2 chaves) & 1451 & 2 & 1215 & 1841 / 2 \\
 \fonte{Elaborado pelos autores.}
 \end{table}
 
-O primeiro resultado é que os \texttt{key\_share} medidos batem exatamente
+O primeiro resultado é que os key\_share medidos batem exatamente
 com a Tabela~\ref{tab:tamanhos}: 32 e 32~bytes no X25519, 1216 e
 1120~bytes no híbrido e 1184 e 1088~bytes no ML-KEM-768 puro. O segundo resultado é que, com o grupo híbrido sozinho, o
-\texttt{ClientHello} do OpenSSL tem 1393~bytes e ainda cabe em um
+ClientHello do OpenSSL tem 1393~bytes e ainda cabe em um
 segmento, por ser bem mais enxuto que o do Chrome (2117~bytes), que
 carrega mais extensões. Quem passa para dois segmentos é o padrão do
 OpenSSL, que envia as duas chaves: a segunda entrada do
-\texttt{key\_share} acrescenta 36~bytes (32 da chave e 4 de cabeçalho), a
+key\_share acrescenta 36~bytes (32 da chave e 4 de cabeçalho), a
 lista de grupos suportados acrescenta mais 14, e outras pequenas
 diferenças completam os 58~bytes a mais em relação ao híbrido sozinho,
 levando a mensagem a 1451~bytes.
@@ -715,26 +718,26 @@ Esses 1451~bytes ficam abaixo dos 1460 do MSS calculado na
 Seção~\ref{sec:rede}, e mesmo assim a mensagem foi dividida. Isso acontece
 porque o Linux ativa os timestamps do TCP por padrão: o SYN anuncia um MSS
 de 1460, mas cada segmento perde 12~bytes para a opção de timestamps,
-sobrando 1448. O \texttt{ClientHello} foi então enviado como um segmento
+sobrando 1448. O ClientHello foi então enviado como um segmento
 de 1448~bytes seguido de outro com apenas 3, o que mostra como o limite é
 estreito: com o híbrido sozinho, sobravam só 55~bytes. A
 Figura~\ref{fig:captura} mostra esse caso no Wireshark: a linha
-``2 Reassembled TCP Segments'' indica que o \texttt{ClientHello} chegou
-em dois pedaços, e a extensão \texttt{key\_share} traz as duas chaves, de
+``2 Reassembled TCP Segments'' indica que o ClientHello chegou
+em dois pedaços, e a extensão key\_share traz as duas chaves, de
 1216 e 32~bytes. A versão do Wireshark usada ainda não conhece o nome do
-grupo híbrido e o mostra como \texttt{Unknown (4588)}, que é o código do
-\texttt{X25519MLKEM768} (0x11EC) (KWIATKOWSKI et al., 2026).
+grupo híbrido e o mostra como Unknown (4588), que é o código do
+X25519MLKEM768 (0x11EC) (KWIATKOWSKI et al., 2026).
 
 \begin{figure}[!htb]
 \centering
-\caption{\texttt{ClientHello} do padrão do OpenSSL~3.5 (\texttt{X25519MLKEM768} + X25519) capturado no Wireshark}
+\caption{ClientHello do padrão do OpenSSL~3.5 (X25519MLKEM768 + X25519) capturado no Wireshark}
 \label{fig:captura}
 \includegraphics[width=\linewidth]{captura-clienthello.png}
 \fonte{Elaborado pelos autores.}
 \end{figure}
 
-Do lado do servidor, a resposta (do \texttt{ServerHello} ao
-\texttt{Finished}) passou de 764~bytes em um segmento no X25519 para cerca
+Do lado do servidor, a resposta (do ServerHello ao
+Finished) passou de 764~bytes em um segmento no X25519 para cerca
 de 1840~bytes em dois segmentos nos grupos pós-quânticos, o que significa que a
 resposta do servidor também cruzou o limite de um segmento, inclusive no
 híbrido sozinho. Mesmo assim, ela ocupa só cerca de 12,6\% da janela
@@ -747,7 +750,7 @@ para dois segmentos é a mudança que os testes vão combinar com diferentes
 taxas de perda. Essa passagem, porém, não acontece no mesmo lugar em todas
 as configurações: nos três grupos fixados do experimento, só a resposta do
 servidor é dividida, enquanto no padrão do OpenSSL, com duas chaves, o
-\texttt{ClientHello} também é.
+ClientHello também é.
 
 
 
@@ -761,12 +764,12 @@ servidor é dividida, enquanto no padrão do OpenSSL, com duas chaves, o
 O experimento tem como objetivo avaliar o efeito do
 estabelecimento de chaves no desempenho do handshake TLS~1.3 sob
 condições controladas de atraso e perda de pacotes. Serão comparados o
-X25519 (clássico), o \texttt{X25519MLKEM768} (híbrido) e o
-\texttt{MLKEM768} (pós-quântico). A hipótese, desenvolvida na
+X25519 (clássico), o X25519MLKEM768 (híbrido) e o
+MLKEM768 (pós-quântico). A hipótese, desenvolvida na
 Seção~\ref{sec:rede}, é que mensagens maiores podem exigir mais segmentos
 TCP e, em redes degradadas, aumentar a exposição a perdas e os tempos de
 recuperação. Essa relação será investigada por medição; não se pressupõe
-que todos os \texttt{ClientHello} híbridos sejam segmentados, como mostrou
+que todos os ClientHello híbridos sejam segmentados, como mostrou
 o exemplo da Seção~\ref{sec:mini}.
 
 \subsection{Ambiente experimental}
@@ -778,14 +781,14 @@ preferencialmente na versão 3.5 ou superior, realizará a negociação TLS,
 pois essa linha oferece suporte nativo aos três grupos considerados
 (OPENSSL PROJECT, 2025). A disponibilidade efetiva dos grupos e a versão
 instalada serão verificadas antes dos ensaios. O uso do
-\texttt{oqs-provider}, previsto na proposta inicial, ficará reservado a
+oqs-provider, previsto na proposta inicial, ficará reservado a
 casos em que seja necessário suporte não disponibilizado pelo OpenSSL
 nativo.
 
 As condições de rede serão controladas pelo utilitário Linux
-\texttt{tc netem}, que permite introduzir atraso e perda probabilística
+tc netem, que permite introduzir atraso e perda probabilística
 nas interfaces de rede (LINUX MAN-PAGES PROJECT, [s.d.]). O tráfego será
-registrado com \texttt{tcpdump} em arquivos \texttt{.pcap} e inspecionado
+registrado com tcpdump em arquivos .pcap e inspecionado
 no Wireshark, de modo a relacionar o tempo das negociações com o volume
 transmitido e as retransmissões observadas. Scripts Python serão usados
 para percorrer os cenários, registrar cada execução e processar os
@@ -802,8 +805,8 @@ Ferramenta & Finalidade \\
 \midrule
 Linux e Docker Compose & Execução e organização do cliente e do servidor em rede virtual. \\
 OpenSSL 3.5 ou superior & Negociação TLS~1.3 com os grupos de troca de chaves selecionados. \\
-\texttt{tc netem} & Emulação controlada de perda e atraso de pacotes. \\
-\texttt{tcpdump} e Wireshark & Captura e inspeção dos segmentos TCP e das mensagens TLS. \\
+tc netem & Emulação controlada de perda e atraso de pacotes. \\
+tcpdump e Wireshark & Captura e inspeção dos segmentos TCP e das mensagens TLS. \\
 Python & Automação, armazenamento e análise das medições. \\
 \bottomrule
 \end{tabular}
@@ -827,7 +830,7 @@ por direção, com a mesma configuração no caminho de ida e no de
 volta. Assim, um atraso artificial de 50~ms em cada direção representa
 aproximadamente 100~ms adicionais ao tempo de ida e volta, além da
 latência natural do ambiente. A perda será configurada segundo o modelo
-probabilístico do \texttt{netem}. A Tabela~\ref{tab:matriz-experimento}
+probabilístico do netem. A Tabela~\ref{tab:matriz-experimento}
 resume as variáveis.
 
 \begin{table}[H]
@@ -839,7 +842,7 @@ resume as variáveis.
 \toprule
 Dimensão & Valores \\
 \midrule
-Grupo criptográfico & X25519; \texttt{X25519MLKEM768}; \texttt{MLKEM768} \\
+Grupo criptográfico & X25519; X25519MLKEM768; MLKEM768 \\
 Perda de pacotes & 0\%, 1\%, 5\% e 10\% \\
 Atraso por direção & 10, 50 e 150~ms \\
 Repetições & 30 tentativas por combinação \\
@@ -947,9 +950,9 @@ reprodução das medições.
 
 A Figura~\ref{fig:topologia-experimento} apresenta a topologia lógica
 planejada. Cliente e servidor estabelecem uma conexão TCP protegida por
-TLS~1.3 sobre a rede virtual. O \texttt{tc netem} não é um serviço
+TLS~1.3 sobre a rede virtual. O tc netem não é um serviço
 intermediário independente: suas regras serão aplicadas às interfaces
-pertinentes, em ambos os sentidos. O \texttt{tcpdump} fará a captura do
+pertinentes, em ambos os sentidos. O tcpdump fará a captura do
 tráfego para análise posterior no Wireshark.
 
 \begin{figure}[H]
@@ -965,9 +968,9 @@ tráfego para análise posterior no Wireshark.
   \node[endpoint] (srv) at (10,0) {Servidor TLS~1.3\\OpenSSL};
   \draw[<->, thick] (cli.east) -- node[above, align=center]
     {Rede virtual Docker\\TCP / TLS~1.3} (srv.west);
-  \node[monitor] (netem) at (5,-1.9) {\texttt{tc netem} nas interfaces\\atraso + perda nos dois sentidos};
+  \node[monitor] (netem) at (5,-1.9) {tc netem nas interfaces\\atraso + perda nos dois sentidos};
   \draw[dashed, ->, pq] (netem.north) -- (5,-0.28);
-  \node[monitor] (cap) at (5,-3.5) {Capturas \texttt{tcpdump} (PCAP)\\análise posterior no Wireshark};
+  \node[monitor] (cap) at (5,-3.5) {Capturas tcpdump (PCAP)\\análise posterior no Wireshark};
   \draw[->, thick, pq] (netem.south) -- (cap.north);
 \end{tikzpicture}
 \fonte{Elaborado pelos autores.}
@@ -979,45 +982,6 @@ verificando se diferenças de tamanho e segmentação se refletem em
 retransmissões, duração do handshake ou taxa de falhas. As medições e sua
 discussão serão apresentadas na entrega final do trabalho.
 
-
-% DECLARAÇÃO DE USO DE IA
-\section*{Declaração de uso de Inteligência Artificial}
-\addcontentsline{toc}{section}{Declaração de uso de Inteligência Artificial}
-
-Durante a elaboração deste relatório parcial, foram utilizadas ferramentas de
-inteligência artificial generativa como apoio à escolha e à organização do
-tema, à pesquisa, ao planejamento experimental, à coleta do mini-exemplo e
-à redação do documento. As informações e
-sugestões fornecidas foram avaliadas pelos autores, que permanecem
-responsáveis pela verificação das fontes, pelas decisões técnicas e pelo
-conteúdo final do trabalho. A Tabela~\ref{tab:uso-ia} apresenta as ferramentas
-utilizadas e suas respectivas finalidades.
-
-\begin{table}[H]
-\centering
-\caption{Ferramentas de inteligência artificial utilizadas no trabalho}
-\label{tab:uso-ia}
-\begin{tabular}{p{3.8cm}p{9.2cm}}
-\toprule
-Ferramenta & Finalidade \\
-\midrule
-Google Gemini & Sugestão e exploração de possíveis temas para o trabalho,
-contribuindo para a definição da proposta sobre TLS pós-quântico em redes
-degradadas. \\
-\addlinespace
-ChatGPT (OpenAI) & Apoio à estruturação do planejamento experimental, à
-definição das métricas de avaliação, à elaboração do pseudocódigo, à revisão
-textual e à organização e formatação do relatório em \LaTeX{}. \\
-\addlinespace
-Claude (Anthropic) & Apoio à pesquisa de fontes e à compreensão dos
-conteúdos (handshake do TLS~1.3, ML-KEM e comportamento do TCP), à
-elaboração das figuras em TikZ, à criação dos scripts de captura do
-mini-exemplo e à extração das medidas da Tabela~\ref{tab:captura}, e à
-revisão textual do relatório. \\
-\bottomrule
-\end{tabular}
-\fonte{Elaborado pelos autores (2026).}
-\end{table}
 
 % REFERÊNCIAS
 \section*{Referências}
@@ -1045,6 +1009,10 @@ control}. RFC 5681. Internet Engineering Task Force, set. 2009. Disponível
 em: \url{https://www.rfc-editor.org/info/rfc5681}. Acesso em: 15 nov.
 2026.}
 
+\refitem{ANTHROPIC. \textbf{Claude}. Versão Opus 5.5. [\textit{S.l.}]: Anthropic,
+2026. Modelo de linguagem. Disponível em: \url{https://claude.ai}. Acesso
+em: 15 nov. 2026.}
+
 \refitem{CASTRYCK, W.; DECRU, T. An efficient key recovery attack on SIDH.
 In: HAZAY, C.; STAM, M. (ed.). \textbf{Advances in Cryptology --
 EUROCRYPT 2023}. Cham: Springer, 2023. p. 423--447. (Lecture Notes in
@@ -1059,6 +1027,10 @@ Task Force, fev. 2021. Disponível em:
 TCP's initial window}. RFC 6928. Internet Engineering Task Force, abr.
 2013. Disponível em: \url{https://www.rfc-editor.org/info/rfc6928}. Acesso
 em: 15 nov. 2026.}
+
+\refitem{GOOGLE. \textbf{Gemini}. [\textit{S.l.}]: Google, 2026. Modelo de
+linguagem. Disponível em: \url{https://gemini.google.com}. Acesso em: 15
+nov. 2026.}
 
 \refitem{KAMPANAKIS, P.; CHILDS-KLEIN, W. The impact of data-heavy,
 post-quantum TLS 1.3 on the Time-To-Last-Byte of Web connections.
@@ -1093,6 +1065,10 @@ DOI: 10.1109/MSP.2018.3761723.}
 \refitem{NATIONAL INSTITUTE OF STANDARDS AND TECHNOLOGY (NIST).
 \textbf{Module-lattice-based key-encapsulation mechanism standard}. FIPS
 203. Gaithersburg: NIST, ago. 2024. DOI: 10.6028/NIST.FIPS.203.}
+
+\refitem{OPENAI. \textbf{ChatGPT}. [\textit{S.l.}]: OpenAI, 2026. Modelo de
+linguagem. Disponível em: \url{https://chatgpt.com}. Acesso em: 15 nov.
+2026.}
 
 \refitem{OPENSSL PROJECT. \textbf{OpenSSL 3.5 series release notes}. 2025.
 Disponível em: \url{https://openssl-library.org/news/openssl-3.5-notes}.
@@ -1140,6 +1116,45 @@ Disponível em: \url{https://www.rfc-editor.org/info/rfc9954}. Acesso em:
 \refitem{TLDR.FAIL. \textbf{tldr.fail}. [s.d.]. Disponível em:
 \url{https://tldr.fail/}. Acesso em: 15 nov. 2026.}
 \endgroup
+
+% USO DE IA (o enunciado pede a indicação na seção de referências)
+\subsection*{Uso de ferramentas de inteligência artificial}
+
+Durante a elaboração deste relatório parcial, foram utilizadas ferramentas de
+inteligência artificial generativa como apoio à escolha e à organização do
+tema, à pesquisa, ao planejamento experimental, à coleta do mini-exemplo e
+à redação do documento. As informações e
+sugestões fornecidas foram avaliadas pelos autores, que permanecem
+responsáveis pela verificação das fontes, pelas decisões técnicas e pelo
+conteúdo final do trabalho. A Tabela~\ref{tab:uso-ia} apresenta as ferramentas
+utilizadas e suas respectivas finalidades.
+
+\begin{table}[H]
+\centering
+\caption{Ferramentas de inteligência artificial utilizadas no trabalho}
+\label{tab:uso-ia}
+\begin{tabular}{p{3.8cm}p{9.2cm}}
+\toprule
+Ferramenta & Finalidade \\
+\midrule
+Google Gemini\newline (GOOGLE, 2026) & Sugestão e exploração de possíveis temas para o trabalho,
+contribuindo para a definição da proposta sobre TLS pós-quântico em redes
+degradadas. \\
+\addlinespace
+ChatGPT\newline (OPENAI, 2026) & Apoio à estruturação do planejamento experimental, à
+definição das métricas de avaliação, à elaboração do pseudocódigo, à revisão
+textual e à organização e formatação do relatório em \LaTeX{}. \\
+\addlinespace
+Claude\newline (ANTHROPIC, 2026) & Apoio à pesquisa de fontes e à compreensão dos
+conteúdos (handshake do TLS~1.3, ML-KEM e comportamento do TCP), à
+elaboração das figuras em TikZ, à criação dos scripts de captura do
+mini-exemplo e à extração das medidas da Tabela~\ref{tab:captura}, e à
+revisão textual do relatório. \\
+\bottomrule
+\end{tabular}
+\fonte{Elaborado pelos autores (2026).}
+\end{table}
+
 
 
 \end{document}
