@@ -59,39 +59,42 @@ Florianópolis\\
 
 O TLS (Transport Layer Security) é o protocolo que protege a maior parte
 das conexões na internet, como as do HTTPS. No TLS~1.3, cliente e servidor
-combinam a chave da sessão com uma troca de chaves em curvas elípticas, em
-geral o X25519 (LANGLEY; HAMBURG; TURNER, 2016). Shor (1997) mostrou que um
-computador quântico suficientemente grande consegue quebrar essa troca de
-chaves, assim como o RSA.
+combinam a chave da sessão por meio de uma troca de chaves em curvas
+elípticas, em geral o X25519 (LANGLEY; HAMBURG; TURNER, 2016), e Shor
+(1997) mostrou que um computador quântico suficientemente grande seria
+capaz de quebrar essa troca de chaves, assim como o RSA.
 
-Esse computador ainda não existe, mas o risco já é atual. Um atacante pode
-gravar hoje o tráfego cifrado e decifrá-lo quando o computador quântico
-existir, ataque conhecido como harvest now, decrypt later
-(Figura~\ref{fig:hndl}). Mosca (2018) resume o problema: se o tempo que um
-dado precisa ficar secreto, somado ao tempo da migração, for maior que o
-tempo até esse computador existir, o dado já está em risco.
+Esse computador ainda não existe, mas o risco já é atual, já que um
+atacante pode gravar hoje o tráfego cifrado e decifrá-lo no futuro, quando
+tiver acesso a uma máquina quântica, ataque conhecido como harvest now,
+decrypt later (Figura~\ref{fig:hndl}). Mosca (2018) resume o problema
+observando que, se o tempo que um dado precisa ficar secreto somado ao
+tempo da migração for maior que o tempo até esse computador existir, o
+dado já está em risco.
 
-Por isso, a migração já começou. Em 2024, o NIST publicou o ML-KEM, seu
-padrão pós-quântico para troca de chaves (NIST, 2024), e hoje recomenda
-abandonar os algoritmos vulneráveis até 2035 (MOODY et al., 2026). No TLS,
-o Chrome e o OpenSSL já usam por padrão uma troca de chaves híbrida, que
-combina o X25519 com um algoritmo pós-quântico (ADRIAN et al., 2024;
-OPENSSL PROJECT, 2025).
+Por esse motivo, a migração já começou: em 2024 o NIST publicou o ML-KEM,
+seu padrão pós-quântico para troca de chaves (NIST, 2024), e hoje
+recomenda abandonar os algoritmos vulneráveis até 2035 (MOODY et al.,
+2026). No caso do TLS, o Chrome e o OpenSSL já usam por padrão uma troca
+de chaves híbrida, que combina o X25519 com um algoritmo pós-quântico
+(ADRIAN et al., 2024; OPENSSL PROJECT, 2025).
 
-O protocolo escolhido para este trabalho é o TLS~1.3 com troca de chaves
-baseada no ML-KEM. O motivo da escolha é um contraste: o ML-KEM é rápido de
-calcular, mas suas chaves são muito maiores. A chave que o cliente envia
-passa de 32~bytes no X25519 para 1216~bytes no grupo híbrido
-\texttt{X25519MLKEM768} (KWIATKOWSKI et al., 2026), e a mensagem pode
-deixar de caber em um único pacote. Em redes com perda ou latência alta,
-cada pacote a mais é mais uma chance de retransmissão e atraso.
+Este trabalho estuda o TLS~1.3 com troca de chaves baseada no ML-KEM,
+escolhido porque, embora seja rápido de calcular, ele usa chaves muito
+maiores que as das curvas elípticas. A chave que o cliente envia passa de
+32~bytes no X25519 para 1216~bytes no grupo híbrido
+\texttt{X25519MLKEM768} (KWIATKOWSKI et al., 2026), o que pode fazer com
+que a mensagem deixe de caber em um único pacote. Em redes com perda ou
+latência alta, cada pacote a mais representa mais uma chance de
+retransmissão e, consequentemente, de atraso no estabelecimento da
+conexão.
 
-O objetivo deste trabalho é medir esse custo na rede. Para isso, serão
-comparadas três configurações, X25519, \texttt{X25519MLKEM768} e ML-KEM-768
-puro, em uma rede emulada com o \texttt{tc netem}, com diferentes taxas de
-perda e atrasos. A Seção~\ref{sec:desenvolvimento} apresenta a parte
-teórica e um mini-exemplo, e a Seção~\ref{sec:experimento} descreve o
-experimento.
+O objetivo do trabalho é medir esse custo na rede, comparando três
+configurações (X25519, \texttt{X25519MLKEM768} e ML-KEM-768 puro) em uma
+rede emulada com o \texttt{tc netem}, sob diferentes taxas de perda e
+atrasos. A Seção~\ref{sec:desenvolvimento} apresenta a parte teórica e um
+mini-exemplo com uma captura real do handshake, e a
+Seção~\ref{sec:experimento} descreve o experimento planejado.
 
 
 \section{Desenvolvimento}
@@ -115,8 +118,7 @@ que o handshake completo leva apenas uma ida e volta (1-RTT) entre cliente
 e servidor. Isso só é possível porque o cliente envia sua parte da troca de
 chaves já na primeira mensagem, o \texttt{ClientHello}, sem esperar o
 servidor dizer qual algoritmo prefere. Essa parte vai dentro de uma
-extensão chamada \texttt{key\_share} (RESCORLA, 2026, seção 4.3.8), e é
-justamente nela que a chave pós-quântica entra, como mostra a
+extensão chamada \texttt{key\_share} (RESCORLA, 2026, seção 4.3.8), e é nela que a chave pós-quântica entra, como mostra a
 Figura~\ref{fig:handshake}.
 
 \begin{figure}[H]
@@ -255,10 +257,9 @@ executa o $\mathsf{Decaps}$. No fim, os dois têm a mesma chave $K$, de
 \subsubsection*{O problema difícil: aprendizado com erros}
 
 A segurança do ML-KEM vem do problema Module-LWE (Module Learning With
-Errors), uma generalização do problema LWE (REGEV, 2009). A
-ideia do LWE é simples. Em um sistema linear $t = As \bmod q$, com $A$ e
-$t$ públicos, é fácil encontrar o segredo $s$ por eliminação de Gauss. O
-LWE soma a esse sistema um vetor $e$ de erros pequenos:
+Errors), uma generalização do problema LWE (REGEV, 2009). A ideia do LWE parte de um sistema linear $t = As \bmod q$: com $A$ e
+$t$ públicos, seria fácil encontrar o segredo $s$ por eliminação de Gauss,
+mas o LWE soma a esse sistema um vetor $e$ de erros pequenos:
 \begin{equation}
 t = A s + e \bmod q
 \end{equation}
@@ -285,13 +286,15 @@ O ciphertext é o par $(u, v)$. Quem tem $s$ decifra calculando:
 w = v - s^{T} u = \underbrace{e^{T} y + e_2 - s^{T} e_1}_{\text{ruído pequeno}} + \left\lceil q/2 \right\rfloor \cdot m
 \label{eq:ruido}
 \end{equation}
-O termo $s^{T} A^{T} y$ aparece em $t^{T} y$ e em $s^{T} u$, e por isso se
-cancela. Sobra só um ruído pequeno: $w$ fica perto de $0$ se o bit é $0$, e
-perto de $\lceil q/2 \rfloor = 1665$ se o bit é $1$. Basta arredondar. Quem
-não conhece $s$ não consegue fazer esse cancelamento.
+Como o termo $s^{T} A^{T} y$ aparece tanto em $t^{T} y$ quanto em
+$s^{T} u$, ele se cancela, e resta apenas um ruído pequeno somado à
+mensagem. Assim, $w$ fica perto de $0$ quando o bit é $0$ e perto de
+$\lceil q/2 \rfloor = 1665$ quando o bit é $1$, de modo que arredondar
+para o valor mais próximo recupera o bit, cancelamento que só quem conhece
+$s$ consegue fazer.
 
-Um exemplo com números pequenos mostra a conta. Ele usa $q = 3329$, mas
-com inteiros no lugar dos polinômios e dimensão 2:
+O exemplo a seguir ilustra essa conta com números pequenos, usando
+$q = 3329$, mas com inteiros no lugar dos polinômios e dimensão 2:
 \begin{itemize}
   \item Chaves: $A = \begin{pmatrix} 1234 & 567 \\ 2890 & 41 \end{pmatrix}$,
   $s = (1, -2)$ e $e = (2, -1)$, então $t = As + e = (102,\ 2807)$;
@@ -319,19 +322,19 @@ $G$, $H$ e $J$ são funções de hash da família SHA-3.
 \caption{Os três algoritmos do ML-KEM, simplificados}
 \label{fig:algos}
 \fbox{\parbox{0.92\linewidth}{\setstretch{1.2}\small
-\textbf{$\mathsf{KeyGen}()$}\\
+$\mathsf{KeyGen}()$\\
 1. gera o par $(ek, dk_{\text{PKE}})$ do K-PKE e sorteia um segredo $z$ de 32~bytes;\\
 2. retorna $ek$ e $dk = (dk_{\text{PKE}}, ek, H(ek), z)$.
 
 \vspace{4pt}
-\textbf{$\mathsf{Encaps}(ek)$}\\
+$\mathsf{Encaps}(ek)$\\
 1. sorteia uma mensagem aleatória $m$ de 32~bytes;\\
 2. calcula $(K, r) = G(m \,\|\, H(ek))$;\\
 3. cifra $m$ com o K-PKE, usando $r$ como aleatoriedade: $c = \text{K-PKE.Encrypt}(ek, m, r)$;\\
 4. retorna $(K, c)$.
 
 \vspace{4pt}
-\textbf{$\mathsf{Decaps}(dk, c)$}\\
+$\mathsf{Decaps}(dk, c)$\\
 1. decifra $m' = \text{K-PKE.Decrypt}(dk_{\text{PKE}}, c)$;\\
 2. recalcula $(K', r') = G(m' \,\|\, H(ek))$;\\
 3. cifra de novo: $c' = \text{K-PKE.Encrypt}(ek, m', r')$;\\
@@ -340,18 +343,19 @@ $G$, $H$ e $J$ são funções de hash da família SHA-3.
 \fonte{Adaptado de NIST (2024).}
 \end{figure}
 
-A ideia é que o $\mathsf{Decaps}$ confere o ciphertext recebido: ele
-decifra, cifra de novo e compara. Isso é possível porque toda a
-aleatoriedade da cifração vem da própria mensagem $m$. Se a comparação
-falha, ele não avisa do erro. Ele devolve uma chave pseudoaleatória, e o
-atacante não aprende nada. Essa técnica se chama rejeição implícita. Com
+Com essa transformação, o $\mathsf{Decaps}$ passa a conferir o ciphertext
+recebido, decifrando-o, cifrando de novo e comparando o resultado, o que
+só é possível porque toda a aleatoriedade da cifração vem da própria
+mensagem $m$. Quando a comparação falha, em vez de sinalizar o erro, ele
+devolve uma chave pseudoaleatória, de modo que o atacante não aprende nada
+com o ciphertext adulterado, técnica conhecida como rejeição implícita. Com
 essa construção, considera-se que o ML-KEM atinge a segurança IND-CCA2,
 que cobre esse tipo de ataque.
 
 \subsubsection*{De onde vêm os 1184 e 1088 bytes}
 
-Os tamanhos que pesam na rede saem dessa estrutura. A chave pública $ek$
-tem o vetor $t$, com 3 polinômios de 256 coeficientes de 12~bits cada,
+Os tamanhos que pesam na rede saem diretamente dessa estrutura, já que a
+chave pública $ek$ contém o vetor $t$, com 3 polinômios de 256 coeficientes de 12~bits cada,
 mais uma semente de 32~bytes, a partir da qual se gera a matriz $A$:
 \begin{equation}
 |ek| = \frac{3 \times 256 \times 12}{8} + 32 = 1184 \text{ bytes}
@@ -361,9 +365,9 @@ espaço: 10~bits nos 3 polinômios de $u$ e 4~bits no polinômio $v$.
 \begin{equation}
 |c| = \frac{3 \times 256 \times 10}{8} + \frac{256 \times 4}{8} = 1088 \text{ bytes}
 \end{equation}
-No X25519, cada lado envia só um ponto da curva, de 32~bytes. Ou seja, a
-diferença de tamanho vem de trocar um único número por vetores de
-polinômios. A Tabela~\ref{tab:params} mostra os três conjuntos de
+No X25519, por outro lado, cada lado envia só um ponto da curva, de
+32~bytes, e é a troca desse único número por vetores de polinômios que
+explica a diferença de tamanho. A Tabela~\ref{tab:params} mostra os três conjuntos de
 parâmetros do padrão, da menor categoria de segurança para a maior. O NIST
 recomenda o ML-KEM-768 como padrão, e é ele que o grupo
 \texttt{X25519MLKEM768} usa.
@@ -388,15 +392,15 @@ ML-KEM-1024 & 4 & 1568 & 1568 & 5 \\
 \subsection{Por que usar o modo híbrido}
 \label{sec:hibrido}
 
-Se o ML-KEM resiste a computadores quânticos, por que não usá-lo sozinho?
-Porque ele é novo. As curvas elípticas são estudadas há décadas, e o
-ML-KEM só foi padronizado em 2024. Um exemplo do risco é o SIKE, outro KEM
-pós-quântico, que chegou à quarta rodada do processo do NIST em 2022.
-Poucas semanas depois, um ataque sem computador quântico quebrou seus
-parâmetros de nível~1 em cerca de uma hora, em um único núcleo de
-processador (CASTRYCK; DECRU, 2023). Nada indica que o mesmo vá acontecer
-com o ML-KEM, mas o caso mostra que a confiança em um algoritmo novo leva
-tempo.
+Mesmo resistindo a computadores quânticos, o ML-KEM não costuma ser usado
+sozinho porque ainda é um algoritmo recente: as curvas elípticas são
+estudadas há décadas, enquanto o ML-KEM só foi padronizado em 2024. Um
+exemplo desse risco é o SIKE, outro KEM pós-quântico, que chegou à quarta
+rodada do processo do NIST em 2022 e, poucas semanas depois, teve seus
+parâmetros de nível~1 quebrados em cerca de uma hora, em um único núcleo
+de processador e sem computador quântico (CASTRYCK; DECRU, 2023). Embora
+nada indique que o mesmo vá acontecer com o ML-KEM, o caso ilustra por que
+se prefere combinar um algoritmo novo com outro já consolidado.
 
 O modo híbrido combina os dois algoritmos, de forma que a conexão continua
 segura enquanto pelo menos um deles não for quebrado (STEBILA; FLUHRER;
@@ -406,8 +410,8 @@ garante pelo menos a segurança que o TLS já tem hoje.
 No grupo \texttt{X25519MLKEM768}, os dois segredos de 32~bytes são
 concatenados, e o resultado entra na derivação de chaves do TLS~1.3
 (Figura~\ref{fig:hibrido}), que começa com a função HKDF-Extract (RESCORLA,
-2026, seção 7.1). Para prever as chaves, o atacante precisaria conhecer os
-dois segredos.
+2026, seção 7.1), de modo que, para prever as chaves, o atacante
+precisaria conhecer os dois segredos.
 
 \begin{figure}[H]
 \centering
@@ -471,7 +475,7 @@ ativa, ela ocupa mais 12~bytes e o MSS cai para 1448.
 Quando uma mensagem é maior que o MSS, o próprio TCP a divide em mais de um
 segmento. Por isso, o termo mais correto aqui é segmentação, e não
 fragmentação, que é o que acontece na camada IP e que o TCP
-justamente tenta evitar respeitando o MSS.
+procura evitar ao respeitar o MSS.
 
 \subsubsection*{De um para dois segmentos}
 
@@ -509,11 +513,12 @@ desktop (ADRIAN et al., 2024).
 \fonte{Elaborado pelos autores com dados de Langley, Hamburg e Turner (2016), Kwiatkowski et al. (2026) e Ristic (2026).}
 \end{figure}
 
-Essa divisão parece pequena, mas tem três consequências para o handshake.
+A passagem de um para dois segmentos tem três consequências para o
+handshake, discutidas a seguir.
 
 \subsubsection*{1. Mais segmentos, mais chance de perda}
 Se cada segmento é perdido de forma independente com probabilidade $p$
-(que é justamente o modelo de perda do \texttt{tc netem}, usado no
+(que é o modelo de perda do \texttt{tc netem}, usado no
 experimento), a chance de perder pelo menos um entre $n$ segmentos é:
 \begin{equation}
 P(\text{perda}) = 1 - (1-p)^n
@@ -583,9 +588,9 @@ recuperação depender do RTO, o handshake passa de 1~segundo. Em uma
 estimativa simplificada, multiplicando a chance de perda pelo custo da
 TLP, com 5\% de perda o atraso médio extra seria de cerca de
 $0{,}05 \times 100 = 5$~ms no \texttt{ClientHello} clássico e de
-$0{,}0975 \times 100 \approx 9{,}8$~ms no híbrido. A média, porém, esconde
-o principal efeito, que aparece nos casos piores: são poucas conexões que
-perdem um segmento, mas cada uma delas fica muito mais lenta.
+$0{,}0975 \times 100 \approx 9{,}8$~ms no híbrido. Essa média, porém, não mostra o principal efeito, que aparece nos casos
+piores, já que poucas conexões perdem um segmento, mas cada uma delas fica
+muito mais lenta.
 
 \subsubsection*{3. A janela inicial do TCP}
 Logo depois de abrir a conexão, o TCP só pode enviar um número limitado de
@@ -658,7 +663,7 @@ X25519MLKEM768 & 1216 & 1120 & parte ML-KEM + parte X25519 \\
 \fonte{Langley, Hamburg e Turner (2016), NIST (2024) e Kwiatkowski et al. (2026).}
 \end{table}
 
-Ou seja, trocar o X25519 pelo híbrido acrescenta $1216 - 32 = 1184$~bytes
+Trocar o X25519 pelo híbrido, portanto, acrescenta $1216 - 32 = 1184$~bytes
 ao \texttt{ClientHello} e $1120 - 32 = 1088$~bytes ao \texttt{ServerHello}.
 Comparando com o MSS de 1460~bytes, só o \texttt{key\_share} híbrido já
 ocupa $1216 / 1460 \approx 83\%$ de um segmento, sobrando cerca de
@@ -696,15 +701,15 @@ Padrão OpenSSL (2 chaves) & 1451 & 2 & 1215 & 1841 / 2 \\
 
 O primeiro resultado é que os \texttt{key\_share} medidos batem exatamente
 com a Tabela~\ref{tab:tamanhos}: 32 e 32~bytes no X25519, 1216 e
-1120~bytes no híbrido e 1184 e 1088~bytes no ML-KEM-768 puro. O segundo
-é menos óbvio: com o grupo híbrido sozinho, o \texttt{ClientHello} do
-OpenSSL tem 1393~bytes e ainda cabe em um segmento. Ele é bem mais enxuto
-que o do Chrome (2117~bytes), que carrega mais extensões. Quem passa para
-dois segmentos é o padrão do OpenSSL, que envia as duas chaves. A segunda
-entrada do \texttt{key\_share} acrescenta 36~bytes (32 da chave e 4 de
-cabeçalho), a lista de grupos suportados acrescenta mais 14, e outras
-pequenas diferenças completam os 58~bytes a mais em relação ao híbrido
-sozinho. Isso leva a mensagem a 1451~bytes.
+1120~bytes no híbrido e 1184 e 1088~bytes no ML-KEM-768 puro. O segundo resultado é que, com o grupo híbrido sozinho, o
+\texttt{ClientHello} do OpenSSL tem 1393~bytes e ainda cabe em um
+segmento, por ser bem mais enxuto que o do Chrome (2117~bytes), que
+carrega mais extensões. Quem passa para dois segmentos é o padrão do
+OpenSSL, que envia as duas chaves: a segunda entrada do
+\texttt{key\_share} acrescenta 36~bytes (32 da chave e 4 de cabeçalho), a
+lista de grupos suportados acrescenta mais 14, e outras pequenas
+diferenças completam os 58~bytes a mais em relação ao híbrido sozinho,
+levando a mensagem a 1451~bytes.
 
 Esses 1451~bytes ficam abaixo dos 1460 do MSS calculado na
 Seção~\ref{sec:rede}, e mesmo assim a mensagem foi dividida. Isso acontece
@@ -730,17 +735,17 @@ grupo híbrido e o mostra como \texttt{Unknown (4588)}, que é o código do
 
 Do lado do servidor, a resposta (do \texttt{ServerHello} ao
 \texttt{Finished}) passou de 764~bytes em um segmento no X25519 para cerca
-de 1840~bytes em dois segmentos nos grupos pós-quânticos. Ou seja, a
+de 1840~bytes em dois segmentos nos grupos pós-quânticos, o que significa que a
 resposta do servidor também cruzou o limite de um segmento, inclusive no
 híbrido sozinho. Mesmo assim, ela ocupa só cerca de 12,6\% da janela
 inicial de 14\,600~bytes e não precisa esperar nenhum ACK. Como os
 certificados continuam clássicos, a janela inicial ainda não é um
 problema, como previsto na Seção~\ref{sec:rede}.
 
-Esse resultado liga a teoria ao experimento. A passagem de um para dois
-segmentos é exatamente a mudança que os testes vão combinar com
-diferentes taxas de perda. Mas ela não acontece no mesmo lugar em todas as
-configurações: nos três grupos fixados do experimento, só a resposta do
+Esses resultados ligam a teoria ao experimento, já que a passagem de um
+para dois segmentos é a mudança que os testes vão combinar com diferentes
+taxas de perda. Essa passagem, porém, não acontece no mesmo lugar em todas
+as configurações: nos três grupos fixados do experimento, só a resposta do
 servidor é dividida, enquanto no padrão do OpenSSL, com duas chaves, o
 \texttt{ClientHello} também é.
 
@@ -912,12 +917,12 @@ ATRASOS $\leftarrow$ [10, 50, 150] ms\\
 REPETICOES $\leftarrow$ 30\\[3pt]
 Verificar ambiente, grupos e certificados\\
 Preparar arquivo de resultados e ensaio piloto\\
-\textbf{para cada} algoritmo \textbf{em} ALGORITMOS:\\
+para cada algoritmo em ALGORITMOS:\\
 \> Configurar cliente e servidor para o algoritmo\\
-\> \textbf{para cada} perda \textbf{em} PERDAS:\\
-\>\> \textbf{para cada} atraso \textbf{em} ATRASOS:\\
+\> para cada perda em PERDAS:\\
+\>\> para cada atraso em ATRASOS:\\
 \>\>\> Aplicar perda e atraso nas interfaces de rede\\
-\>\>\> \textbf{para} repeticao $\leftarrow$ 1 \textbf{ate} REPETICOES:\\
+\>\>\> para repeticao $\leftarrow$ 1 ate REPETICOES:\\
 \>\>\>\> Iniciar captura individual e cronometro\\
 \>\>\>\> Estabelecer nova conexao TLS 1.3\\
 \>\>\>\> Registrar duracao, sucesso ou timeout\\
