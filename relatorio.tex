@@ -1,5 +1,4 @@
-% Seções 2.1, 2.4 e 2.5 do relatório parcial (INE5429): handshake do TLS 1.3,
-% tamanho de chave como problema de rede e mini-exemplo.
+% Relatório parcial (INE5429): TLS pós-quântico em redes degradadas.
 % Compilar com pdflatex duas vezes.
 \documentclass[12pt,a4paper]{article}
 \usepackage[T1]{fontenc}
@@ -52,6 +51,9 @@ Florianópolis\\
 2026
 \end{titlepage}
 
+\tableofcontents
+\newpage
+
 
 \section{Introdução}
 
@@ -64,7 +66,7 @@ chaves, assim como o RSA.
 
 Esse computador ainda não existe, mas o risco já é atual. Um atacante pode
 gravar hoje o tráfego cifrado e decifrá-lo quando o computador quântico
-existir, ataque conhecido como \textit{harvest now, decrypt later}
+existir, ataque conhecido como harvest now, decrypt later
 (Figura~\ref{fig:hndl}). Mosca (2018) resume o problema: se o tempo que um
 dado precisa ficar secreto, somado ao tempo da migração, for maior que o
 tempo até esse computador existir, o dado já está em risco.
@@ -88,7 +90,8 @@ O objetivo deste trabalho é medir esse custo na rede. Para isso, serão
 comparadas três configurações, X25519, \texttt{X25519MLKEM768} e ML-KEM-768
 puro, em uma rede emulada com o \texttt{tc netem}, com diferentes taxas de
 perda e atrasos. A Seção~\ref{sec:desenvolvimento} apresenta a parte
-teórica e um mini-exemplo, e a Seção~3 descreve o experimento.
+teórica e um mini-exemplo, e a Seção~\ref{sec:experimento} descreve o
+experimento.
 
 
 \section{Desenvolvimento}
@@ -99,9 +102,8 @@ teórica e um mini-exemplo, e a Seção~3 descreve o experimento.
 \subsection{Handshake do TLS 1.3}
 \label{sec:tls13}
 
-O TLS (Transport Layer Security) é o protocolo que protege a maior
-parte das conexões na internet, como as do HTTPS, criando um canal seguro
-sobre o TCP. Sua versão 1.3, hoje especificada pela RFC~9846 (RESCORLA,
+Como visto na introdução, o TLS cria um canal seguro sobre o TCP. Sua
+versão 1.3, hoje especificada pela RFC~9846 (RESCORLA,
 2026), que substituiu a RFC~8446 (RESCORLA, 2018) em julho de 2026, é
 dividida em duas partes: o handshake, em que cliente e servidor
 combinam os parâmetros da conexão, se autenticam e estabelecem um segredo
@@ -158,10 +160,10 @@ mensagem (\texttt{Finished}), e o cliente responde com o seu próprio
 Como o cliente precisa adivinhar qual algoritmo o servidor vai aceitar, ele
 pode errar. Nesse caso, o servidor responde com um
 \texttt{HelloRetryRequest} (RESCORLA, 2026, seção 4.2.4) e o cliente
-precisa recomeçar o handshake, o que custa uma ida e volta a mais. Para
-evitar isso, o cliente pode enviar chaves de mais de um algoritmo no mesmo
-\texttt{ClientHello}, mas isso deixa a mensagem maior (AHMAD; JAMAL;
-KRIVIT, 2026). O OpenSSL~3.5, por exemplo, envia por padrão duas chaves:
+precisa recomeçar o handshake, o que custa uma ida e volta a mais (AHMAD;
+JAMAL; KRIVIT, 2026). Para evitar isso, o cliente pode enviar chaves de
+mais de um algoritmo no mesmo \texttt{ClientHello}, mas isso deixa a
+mensagem maior. O OpenSSL~3.5, por exemplo, envia por padrão duas chaves:
 uma híbrida pós-quântica e uma X25519 clássica (OPENSSL PROJECT, 2025).
 
 Outro ponto importante é que, no TLS~1.3, o sigilo e a autenticação vêm de
@@ -291,11 +293,11 @@ não conhece $s$ não consegue fazer esse cancelamento.
 Um exemplo com números pequenos mostra a conta. Ele usa $q = 3329$, mas
 com inteiros no lugar dos polinômios e dimensão 2:
 \begin{itemize}
-  \item \textbf{Chaves:} $A = \begin{pmatrix} 1234 & 567 \\ 2890 & 41 \end{pmatrix}$,
+  \item Chaves: $A = \begin{pmatrix} 1234 & 567 \\ 2890 & 41 \end{pmatrix}$,
   $s = (1, -2)$ e $e = (2, -1)$, então $t = As + e = (102,\ 2807)$;
-  \item \textbf{Cifrar $m = 1$:} com $y = (-1, 1)$, $e_1 = (1, 0)$ e
+  \item Cifrar $m = 1$: com $y = (-1, 1)$, $e_1 = (1, 0)$ e
   $e_2 = -2$, obtém-se $u = (1657,\ 2803)$ e $v = 1039$;
-  \item \textbf{Decifrar:} $w = v - s^{T} u = 1039 - (1657 - 2 \cdot 2803)
+  \item Decifrar: $w = v - s^{T} u = 1039 - (1657 - 2 \cdot 2803)
   \equiv 1659 \pmod{3329}$.
 \end{itemize}
 Como 1659 está perto de 1665, o bit decifrado é $1$. A diferença de $-6$ é
@@ -467,8 +469,8 @@ ativa, ela ocupa mais 12~bytes e o MSS cai para 1448.
 \end{figure}
 
 Quando uma mensagem é maior que o MSS, o próprio TCP a divide em mais de um
-segmento. Por isso, o termo mais correto aqui é \textit{segmentação}, e não
-\textit{fragmentação}, que é o que acontece na camada IP e que o TCP
+segmento. Por isso, o termo mais correto aqui é segmentação, e não
+fragmentação, que é o que acontece na camada IP e que o TCP
 justamente tenta evitar respeitando o MSS.
 
 \subsubsection*{De um para dois segmentos}
@@ -625,8 +627,8 @@ com perda ou instáveis podem sofrer um impacto maior.
 A partir dessa análise, a hipótese a ser testada no experimento é que,
 sem perda, a diferença entre X25519 e \texttt{X25519MLKEM768} deve ser
 pequena, já que o custo está em bytes e não em idas e voltas. Conforme a
-perda aumenta, o \texttt{ClientHello} em dois segmentos deve aumentar a
-chance de uma perda no handshake e, com ela, os casos mais lentos da
+perda aumenta, as mensagens que passam a ocupar dois segmentos devem
+aumentar a chance de uma perda no handshake e, com ela, os casos mais lentos da
 distribuição, por causa das recuperações por temporizador. Por isso, além
 da média, o experimento também deve observar a mediana e os percentis mais
 altos (como o p95).
@@ -711,17 +713,18 @@ de 1460, mas cada segmento perde 12~bytes para a opção de timestamps,
 sobrando 1448. O \texttt{ClientHello} foi então enviado como um segmento
 de 1448~bytes seguido de outro com apenas 3, o que mostra como o limite é
 estreito: com o híbrido sozinho, sobravam só 55~bytes. A
-Figura~\ref{fig:captura} mostra esse caso no Wireshark.
+Figura~\ref{fig:captura} mostra esse caso no Wireshark: a linha
+``2 Reassembled TCP Segments'' indica que o \texttt{ClientHello} chegou
+em dois pedaços, e a extensão \texttt{key\_share} traz as duas chaves, de
+1216 e 32~bytes. A versão do Wireshark usada ainda não conhece o nome do
+grupo híbrido e o mostra como \texttt{Unknown (4588)}, que é o código do
+\texttt{X25519MLKEM768} (0x11EC) (KWIATKOWSKI et al., 2026).
 
-\begin{figure}[H]
+\begin{figure}[!htb]
 \centering
 \caption{\texttt{ClientHello} do padrão do OpenSSL~3.5 (\texttt{X25519MLKEM768} + X25519) capturado no Wireshark}
 \label{fig:captura}
-% Print do Wireshark de captura/capturas/padrao-openssl.pcap (filtro tls.handshake.type == 1),
-% mostrando "2 Reassembled TCP Segments (1451 bytes): #4(1448), #5(3)" e as duas
-% entradas do key_share (1216 e 32 bytes). Salvar como captura-clienthello.png e
-% trocar o \fbox abaixo por: \includegraphics[width=\linewidth]{captura-clienthello.png}
-\fbox{\parbox[c][5cm][c]{0.9\linewidth}{\centering \todo{colar imagem wireshark}}}
+\includegraphics[width=\linewidth]{captura-clienthello.png}
 \fonte{Elaborado pelos autores.}
 \end{figure}
 
@@ -737,10 +740,9 @@ problema, como previsto na Seção~\ref{sec:rede}.
 Esse resultado liga a teoria ao experimento. A passagem de um para dois
 segmentos é exatamente a mudança que os testes vão combinar com
 diferentes taxas de perda. Mas ela não acontece no mesmo lugar em todas as
-configurações: com o grupo híbrido fixado, só a resposta do servidor é
-dividida, enquanto no padrão do OpenSSL o \texttt{ClientHello} também é.
-Por isso, o experimento deve incluir as duas configurações para observar
-os dois efeitos separadamente.
+configurações: nos três grupos fixados do experimento, só a resposta do
+servidor é dividida, enquanto no padrão do OpenSSL, com duas chaves, o
+\texttt{ClientHello} também é.
 
 
 
@@ -752,7 +754,7 @@ os dois efeitos separadamente.
 \label{sec:experimento}
 
 O experimento tem como objetivo avaliar o efeito do
-estabelecimento de chaves no desempenho do \textit{handshake} TLS~1.3 sob
+estabelecimento de chaves no desempenho do handshake TLS~1.3 sob
 condições controladas de atraso e perda de pacotes. Serão comparados o
 X25519 (clássico), o \texttt{X25519MLKEM768} (híbrido) e o
 \texttt{MLKEM768} (pós-quântico). A hipótese, desenvolvida na
@@ -777,7 +779,7 @@ nativo.
 
 As condições de rede serão controladas pelo utilitário Linux
 \texttt{tc netem}, que permite introduzir atraso e perda probabilística
-nas interfaces de rede (LINUX MAN-PAGES PROJECT). O tráfego será
+nas interfaces de rede (LINUX MAN-PAGES PROJECT, [s.d.]). O tráfego será
 registrado com \texttt{tcpdump} em arquivos \texttt{.pcap} e inspecionado
 no Wireshark, de modo a relacionar o tempo das negociações com o volume
 transmitido e as retransmissões observadas. Scripts Python serão usados
@@ -807,7 +809,7 @@ Para tornar as comparações consistentes, serão mantidos constantes o
 protocolo TLS~1.3, o certificado de autenticação do servidor, a suíte
 criptográfica de proteção dos registros e os parâmetros do ambiente que
 não constituem variáveis do experimento. Cada tentativa deverá realizar
-um \textit{handshake} completo, sem retomada de sessão. Também serão
+um handshake completo, sem retomada de sessão. Também serão
 registradas as versões das ferramentas, o sistema operacional e as
 configurações das interfaces, incluindo MTU e MSS observados.
 
@@ -816,7 +818,7 @@ configurações das interfaces, incluindo MTU e MSS observados.
 
 A matriz experimental combina três grupos criptográficos, quatro taxas de
 perda e três valores de atraso. Os valores de atraso serão aplicados
-\emph{por direção}, com a mesma configuração no caminho de ida e no de
+por direção, com a mesma configuração no caminho de ida e no de
 volta. Assim, um atraso artificial de 50~ms em cada direção representa
 aproximadamente 100~ms adicionais ao tempo de ida e volta, além da
 latência natural do ambiente. A perda será configurada segundo o modelo
@@ -879,7 +881,7 @@ completa. Um limite de tempo para tentativas malsucedidas também será
 fixado e documentado. Para cada cenário serão calculados média, mediana,
 desvio padrão e, quando a quantidade de observações permitir, percentil
 95 dos tempos de conexão concluída. A taxa de falhas será apresentada
-separadamente, evitando que a exclusão dos \textit{timeouts} produza uma
+separadamente, evitando que a exclusão dos timeouts produza uma
 interpretação incorreta dos resultados.
 
 \subsection{Procedimento experimental e pseudocódigo}
@@ -893,7 +895,7 @@ registrando a duração, o estado de sucesso ou falha e o identificador da
 captura correspondente. Ao término de cada cenário, as regras de
 emulação serão removidas, inclusive em caso de erro.
 
-O Algoritmo~\ref{alg:coleta} apresenta o pseudocódigo planejado.
+A Figura~\ref{alg:coleta} apresenta o pseudocódigo planejado.
 
 \begin{figure}[H]
 \centering
@@ -979,7 +981,8 @@ discussão serão apresentadas na entrega final do trabalho.
 
 Durante a elaboração deste relatório parcial, foram utilizadas ferramentas de
 inteligência artificial generativa como apoio à escolha e à organização do
-tema, ao planejamento experimental e à redação do documento. As informações e
+tema, à pesquisa, ao planejamento experimental, à coleta do mini-exemplo e
+à redação do documento. As informações e
 sugestões fornecidas foram avaliadas pelos autores, que permanecem
 responsáveis pela verificação das fontes, pelas decisões técnicas e pelo
 conteúdo final do trabalho. A Tabela~\ref{tab:uso-ia} apresenta as ferramentas
@@ -991,7 +994,7 @@ utilizadas e suas respectivas finalidades.
 \label{tab:uso-ia}
 \begin{tabular}{p{3.8cm}p{9.2cm}}
 \toprule
-\textbf{Ferramenta} & \textbf{Finalidade} \\
+Ferramenta & Finalidade \\
 \midrule
 Google Gemini & Sugestão e exploração de possíveis temas para o trabalho,
 contribuindo para a definição da proposta sobre TLS pós-quântico em redes
@@ -1000,6 +1003,12 @@ degradadas. \\
 ChatGPT (OpenAI) & Apoio à estruturação do planejamento experimental, à
 definição das métricas de avaliação, à elaboração do pseudocódigo, à revisão
 textual e à organização e formatação do relatório em \LaTeX{}. \\
+\addlinespace
+Claude (Anthropic) & Apoio à pesquisa de fontes e à compreensão dos
+conteúdos (handshake do TLS~1.3, ML-KEM e comportamento do TCP), à
+elaboração das figuras em TikZ, à criação dos scripts de captura do
+mini-exemplo e à extração das medidas da Tabela~\ref{tab:captura}, e à
+revisão textual do relatório. \\
 \bottomrule
 \end{tabular}
 \fonte{Elaborado pelos autores (2026).}
@@ -1007,6 +1016,7 @@ textual e à organização e formatação do relatório em \LaTeX{}. \\
 
 % REFERÊNCIAS
 \section*{Referências}
+\addcontentsline{toc}{section}{Referências}
 \begingroup
 \setstretch{1.0}
 \setlength{\parindent}{0pt}
@@ -1046,7 +1056,7 @@ TCP's initial window}. RFC 6928. Internet Engineering Task Force, abr.
 em: 15 nov. 2026.}
 
 \refitem{KAMPANAKIS, P.; CHILDS-KLEIN, W. The impact of data-heavy,
-post-quantum TLS 1.3 on the Time-To-Last-Byte of real-world connections.
+post-quantum TLS 1.3 on the Time-To-Last-Byte of Web connections.
 In: WORKSHOP ON MEASUREMENTS, ATTACKS, AND DEFENSES FOR THE WEB (MADWeb),
 2024, San Diego. \textbf{Proceedings} [...]. Reston: Internet Society,
 2024. DOI: 10.14722/madweb.2024.23010.}
@@ -1062,6 +1072,11 @@ security}. RFC 7748. Internet Research Task Force, jan. 2016. Disponível
 em: \url{https://www.rfc-editor.org/info/rfc7748}. Acesso em: 15 nov.
 2026.}
 
+\refitem{LINUX MAN-PAGES PROJECT. \textbf{tc-netem(8): Linux manual
+page}. [s.d.]. Disponível em:
+\url{https://man7.org/linux/man-pages/man8/tc-netem.8.html}.
+Acesso em: 15 nov. 2026.}
+
 \refitem{MOODY, D.; PERLNER, R.; REGENSCHEID, A.; ROBINSON, A.; COOPER, D.
 \textbf{Transition to post-quantum cryptography standards}. NIST IR 8547.
 Gaithersburg: NIST, out. 2026. DOI: 10.6028/NIST.IR.8547.}
@@ -1073,11 +1088,6 @@ DOI: 10.1109/MSP.2018.3761723.}
 \refitem{NATIONAL INSTITUTE OF STANDARDS AND TECHNOLOGY (NIST).
 \textbf{Module-lattice-based key-encapsulation mechanism standard}. FIPS
 203. Gaithersburg: NIST, ago. 2024. DOI: 10.6028/NIST.FIPS.203.}
-
-\refitem{LINUX MAN-PAGES PROJECT. \textbf{tc-netem(8): Linux manual
-page}. [s.d.]. Disponível em:
-\url{https://man7.org/linux/man-pages/man8/tc-netem.8.html}.
-Acesso em: 15 nov. 2026.}
 
 \refitem{OPENSSL PROJECT. \textbf{OpenSSL 3.5 series release notes}. 2025.
 Disponível em: \url{https://openssl-library.org/news/openssl-3.5-notes}.
