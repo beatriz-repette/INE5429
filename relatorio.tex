@@ -1,4 +1,4 @@
-% Relatório parcial (INE5429): TLS pós-quântico em redes degradadas.
+% Relatório final (INE5429): TLS pós-quântico em redes degradadas.
 % Compilar com pdflatex duas vezes.
 \documentclass[12pt,a4paper]{article}
 \usepackage[T1]{fontenc}
@@ -17,7 +17,7 @@
 \usetikzlibrary{arrows.meta,positioning,decorations.pathreplacing}
 \usepackage{etoolbox}
 \AtBeginEnvironment{tikzpicture}{\linespread{1}\selectfont}
-\usepackage{url}
+\usepackage{xurl}
 \urlstyle{same}
 \usepackage[hidelinks]{hyperref}
 
@@ -43,7 +43,7 @@ CIÊNCIAS DA COMPUTAÇÃO\par
 \vspace{\stretch{1}}
 \textbf{TLS Pós-Quântico em Redes Degradadas}\par
 \vspace{0.4cm}
-Relatório parcial\par
+Relatório final\par
 \vspace{\stretch{1}}
 INE5429 - Segurança em Computação\\
 Ana Clara Gomes Guimarães - 23250590\\
@@ -92,12 +92,15 @@ latência alta, cada pacote a mais representa mais uma chance de
 retransmissão e, consequentemente, de atraso no estabelecimento da
 conexão.
 
-O objetivo do trabalho é medir esse custo na rede, comparando três
-configurações (X25519, X25519MLKEM768 e ML-KEM-768 puro) em uma
-rede emulada com o tc netem, sob diferentes taxas de perda e
-atrasos. A Seção~\ref{sec:desenvolvimento} apresenta a parte teórica e um
-mini-exemplo com uma captura real do handshake, e a
-Seção~\ref{sec:experimento} descreve o experimento planejado.
+O objetivo do trabalho é medir esse custo na rede, comparando o X25519,
+o X25519MLKEM768, o ML-KEM-768 puro e o padrão do OpenSSL, que envia as
+chaves híbrida e clássica juntas, em uma rede emulada com o tc netem, sob
+diferentes taxas de perda e atrasos. A Seção~\ref{sec:desenvolvimento}
+apresenta a parte teórica e um mini-exemplo com uma captura real do
+handshake, a Seção~\ref{sec:experimento} descreve a implementação do
+experimento, a Seção~\ref{sec:resultados} apresenta os resultados, que são
+discutidos na Seção~\ref{sec:discussao}, e a Seção~\ref{sec:conclusao}
+conclui o trabalho.
 
 
 \section{Desenvolvimento}
@@ -525,6 +528,7 @@ Se cada segmento é perdido de forma independente com probabilidade $p$
 experimento), a chance de perder pelo menos um entre $n$ segmentos é:
 \begin{equation}
 P(\text{perda}) = 1 - (1-p)^n
+\label{eq:perda}
 \end{equation}
 Por exemplo, com 5\% de perda, a chance de algo dar errado no
 ClientHello clássico (1 segmento) é de 5\%, mas no híbrido (2
@@ -622,7 +626,7 @@ primeiro uma chave pós-quântica (AHMAD; JAMAL; KRIVIT, 2026).
 
 O efeito da perda de pacotes também já foi medido em ambiente controlado.
 Paquin, Stebila e Tamvada (2020) usaram recursos de emulação de rede do
-kernel Linux, como será feito neste trabalho, variando a perda de 0 a
+kernel Linux, como foi feito neste trabalho, variando a perda de 0 a
 20\%, e observaram que taxas acima de 3 a 5\% começam a ter impacto
 significativo nos algoritmos pós-quânticos cujas mensagens ocupam muitos
 pacotes. Já Kampanakis e Childs-Klein (2024) mostraram que, em redes
@@ -746,7 +750,7 @@ certificados continuam clássicos, a janela inicial ainda não é um
 problema, como previsto na Seção~\ref{sec:rede}.
 
 Esses resultados ligam a teoria ao experimento, já que a passagem de um
-para dois segmentos é a mudança que os testes vão combinar com diferentes
+para dois segmentos é a mudança que os testes da Seção~\ref{sec:experimento} combinam com diferentes
 taxas de perda. Essa passagem, porém, não acontece no mesmo lugar em todas
 as configurações: nos três grupos fixados do experimento, só a resposta do
 servidor é dividida, enquanto no padrão do OpenSSL, com duas chaves, o
@@ -756,231 +760,453 @@ ClientHello também é.
 
 
 % ---------------------------------------------------------------------------
-% SEÇÃO 3 — PLANEJAMENTO EXPERIMENTAL (PESSOA 3)
+% SEÇÃO 3 — IMPLEMENTAÇÃO DO EXPERIMENTO
 % ---------------------------------------------------------------------------
 \section{Experimento}
 \label{sec:experimento}
 
-O experimento tem como objetivo avaliar o efeito do
-estabelecimento de chaves no desempenho do handshake TLS~1.3 sob
-condições controladas de atraso e perda de pacotes. Serão comparados o
-X25519 (clássico), o X25519MLKEM768 (híbrido) e o
-MLKEM768 (pós-quântico). A hipótese, desenvolvida na
-Seção~\ref{sec:rede}, é que mensagens maiores podem exigir mais segmentos
-TCP e, em redes degradadas, aumentar a exposição a perdas e os tempos de
-recuperação. Essa relação será investigada por medição; não se pressupõe
-que todos os ClientHello híbridos sejam segmentados, como mostrou
-o exemplo da Seção~\ref{sec:mini}.
+O experimento avaliou o efeito da troca de chaves no tempo do handshake
+TLS~1.3 sob condições controladas de atraso e perda de pacotes. Foram
+comparadas quatro configurações: o X25519 (clássico), o X25519MLKEM768
+(híbrido), o MLKEM768 (pós-quântico puro) e o padrão do OpenSSL~3.5, em que o
+cliente envia as chaves X25519MLKEM768 e X25519 juntas. Essa quarta
+configuração não estava no planejamento e foi incluída por causa do
+mini-exemplo da Seção~\ref{sec:mini}, que mostrou que ela é a única em que o
+ClientHello ocupa dois segmentos, enquanto nas outras três só a resposta do
+servidor passa de um segmento. Com ela, o experimento consegue observar os
+dois efeitos separadamente. Todo o código está disponível no repositório
+do trabalho\footnote{\url{https://github.com/beatriz-repette/trabalho-seguranca}, pasta experimento.},
+com instruções para reproduzir as medições.
 
-\subsection{Ambiente experimental}
+\subsection{Ambiente e topologia}
 \label{subsec:ambiente}
 
-Será utilizado um ambiente Linux com cliente e servidor TLS~1.3 executados em
-containers isolados, conectados por uma rede virtual Docker. O OpenSSL,
-preferencialmente na versão 3.5 ou superior, realizará a negociação TLS,
-pois essa linha oferece suporte nativo aos três grupos considerados
-(OPENSSL PROJECT, 2025). A disponibilidade efetiva dos grupos e a versão
-instalada serão verificadas antes dos ensaios. O uso do
-oqs-provider, previsto na proposta inicial, ficará reservado a
-casos em que seja necessário suporte não disponibilizado pelo OpenSSL
-nativo.
+O ambiente foi montado com três containers Docker em uma máquina Linux:
+um cliente, um servidor e um roteador entre os dois, ligados por duas redes
+virtuais com MTU de 1500~bytes (Figura~\ref{fig:topologia-experimento}). No
+planejamento, as regras de emulação seriam aplicadas diretamente nas
+interfaces do cliente e do servidor, mas, durante a implementação,
+percebeu-se que, nesse caso, a captura só registraria os pacotes que
+sobreviveram à perda. Com um roteador no meio, o tc netem passou a ser
+aplicado na saída das duas interfaces do roteador, atrasando e descartando
+pacotes nos dois sentidos, enquanto o tcpdump captura os pacotes que chegam
+a ele, antes da perda. Assim, os segmentos descartados pela rede emulada
+também aparecem nas capturas, o que permite identificar as retransmissões
+de cada conexão.
 
-As condições de rede serão controladas pelo utilitário Linux
-tc netem, que permite introduzir atraso e perda probabilística
-nas interfaces de rede (LINUX MAN-PAGES PROJECT, [s.d.]). O tráfego será
-registrado com tcpdump em arquivos .pcap e inspecionado
-no Wireshark, de modo a relacionar o tempo das negociações com o volume
-transmitido e as retransmissões observadas. Scripts Python serão usados
-para percorrer os cenários, registrar cada execução e processar os
-dados.
+\begin{figure}[H]
+\centering
+\caption{Topologia usada no experimento}
+\label{fig:topologia-experimento}
+\begin{tikzpicture}[>=Stealth, font=\small,
+  endpoint/.style={draw=classico, rounded corners=3pt, fill=classico!8,
+    minimum width=3.1cm, minimum height=1.2cm, align=center},
+  monitor/.style={draw=pq, rounded corners=3pt, fill=pq!8,
+    minimum width=4.2cm, minimum height=1.6cm, align=center}]
+  \node[endpoint] (cli) at (0,0) {Cliente\\cliente em C (libssl)\\10.77.1.10};
+  \node[monitor] (rot) at (6.2,0) {Roteador\\tc netem: atraso + perda\\nas duas saídas\\tcpdump: pacotes que chegam};
+  \node[endpoint] (srv) at (12.4,0) {Servidor\\openssl s\_server\\10.77.2.10};
+  \draw[<->, thick] (cli.east) -- node[above] {rede 1} (rot.west);
+  \draw[<->, thick] (rot.east) -- node[above] {rede 2} (srv.west);
+  \node[gray] at (6.2,-1.5) {\footnotesize MTU de 1500 bytes nas duas redes};
+\end{tikzpicture}
+\fonte{Elaborado pelos autores.}
+\end{figure}
+
+A Tabela~\ref{tab:ferramentas-experimento} resume as ferramentas usadas. O
+OpenSSL~3.5.9, da distribuição Alpine~3.22, já tem os três grupos
+pós-quânticos e híbridos de forma nativa, então o oqs-provider, previsto
+na proposta inicial, não foi necessário. O servidor é o próprio
+openssl s\_server, com um certificado ECDSA P-256 clássico e configurado
+para aceitar os grupos X25519MLKEM768, MLKEM768 e X25519, nessa ordem de
+preferência.
 
 \begin{table}[H]
 \centering
-\caption{Ferramentas previstas para o experimento}
+\caption{Ferramentas usadas no experimento}
 \label{tab:ferramentas-experimento}
 \small
-\begin{tabular}{p{3.4cm}p{9.4cm}}
+\begin{tabular}{p{3.6cm}p{9.2cm}}
 \toprule
-Ferramenta & Finalidade \\
+Ferramenta & Uso \\
 \midrule
-Linux e Docker Compose & Execução e organização do cliente e do servidor em rede virtual. \\
-OpenSSL 3.5 ou superior & Negociação TLS~1.3 com os grupos de troca de chaves selecionados. \\
-tc netem & Emulação controlada de perda e atraso de pacotes. \\
-tcpdump e Wireshark & Captura e inspeção dos segmentos TCP e das mensagens TLS. \\
-Python & Automação, armazenamento e análise das medições. \\
+Docker 29.6 & Containers do cliente, do roteador e do servidor, e as duas redes virtuais. \\
+OpenSSL 3.5.9 & Servidor TLS~1.3 (s\_server) e biblioteca do cliente (libssl). \\
+Cliente em C & Programa próprio que faz os handshakes e mede o tempo de cada um. \\
+tc netem & Atraso e perda de pacotes no roteador, nos dois sentidos. \\
+tcpdump e tshark & Captura no roteador e extração de segmentos, bytes e retransmissões. \\
+Wireshark & Inspeção manual das capturas. \\
+Python (pandas e matplotlib) & Automação da matriz, estatísticas e gráficos. \\
 \bottomrule
 \end{tabular}
 \fonte{Elaborado pelos autores.}
 \end{table}
 
-Para tornar as comparações consistentes, serão mantidos constantes o
-protocolo TLS~1.3, o certificado de autenticação do servidor, a suíte
-criptográfica de proteção dos registros e os parâmetros do ambiente que
-não constituem variáveis do experimento. Cada tentativa deverá realizar
-um handshake completo, sem retomada de sessão. Também serão
-registradas as versões das ferramentas, o sistema operacional e as
-configurações das interfaces, incluindo MTU e MSS observados.
+Alguns cuidados foram necessários para que as medidas refletissem o
+comportamento real da rede. Primeiro, as otimizações de segmentação das
+placas virtuais (TSO, GSO e GRO) foram desligadas em todas as interfaces,
+porque, com elas ativas, o kernel junta vários segmentos em um único pacote
+maior que o MTU, e o netem descartaria esses segmentos de uma só vez, o que
+não aconteceria em uma rede real. Segundo, o cliente e o servidor foram
+configurados com tcp\_no\_metrics\_save, para que o kernel não
+reaproveitasse o RTT e o temporizador de retransmissão medidos em conexões
+anteriores, mantendo cada tentativa independente. Por fim, o servidor não
+emite session tickets e o cliente não guarda sessões, de modo que toda
+tentativa é um handshake completo, sem retomada.
 
-\subsection{Matriz de testes e métricas}
-\label{subsec:matriz}
+\subsection{Medição}
+\label{subsec:medicao}
 
-A matriz experimental combina três grupos criptográficos, quatro taxas de
-perda e três valores de atraso. Os valores de atraso serão aplicados
-por direção, com a mesma configuração no caminho de ida e no de
-volta. Assim, um atraso artificial de 50~ms em cada direção representa
-aproximadamente 100~ms adicionais ao tempo de ida e volta, além da
-latência natural do ambiente. A perda será configurada segundo o modelo
-probabilístico do netem. A Tabela~\ref{tab:matriz-experimento}
-resume as variáveis.
+Para medir o tempo do handshake sem incluir o custo de iniciar um programa
+a cada tentativa, foi escrito um cliente em C que usa a libssl do OpenSSL e
+faz todas as tentativas de um cenário em sequência, abrindo uma nova
+conexão a cada uma. O cronômetro começa imediatamente antes do
+connect(), e o programa registra dois intervalos separados: o
+handshake TCP, até o connect() retornar, e o handshake TLS, do fim
+do connect() até o SSL\_connect() retornar, o que acontece
+quando o cliente recebe o Finished do servidor e envia o seu.
+
+Essa separação é importante para a análise. A perda de um SYN atrasa a
+conexão em pelo menos um segundo, pelo temporizador inicial do TCP
+(PAXSON et al., 2011), mas afeta todos os grupos da mesma forma, já que o
+SYN não carrega nenhum dado do TLS. Por isso, a métrica principal deste
+trabalho é o tempo do handshake TLS, que isola o efeito das mensagens
+maiores. Cada operação bloqueante do cliente tem um limite de 10~segundos,
+e as tentativas que passam desse limite são registradas como falhas.
+
+As métricas coletadas estão na Tabela~\ref{tab:metricas-experimento}. As
+três primeiras vêm do cliente, e as demais foram extraídas das capturas com
+o tshark, associando cada conexão à porta de origem do cliente.
 
 \begin{table}[H]
 \centering
-\caption{Matriz planejada para os testes TLS~1.3}
+\caption{Métricas coletadas em cada tentativa}
+\label{tab:metricas-experimento}
+\small
+\begin{tabular}{p{4.4cm}p{1.4cm}p{7.2cm}}
+\toprule
+Métrica & Unidade & Como foi obtida \\
+\midrule
+Handshake TCP & ms & Cliente: do início do connect() até o seu retorno. \\
+Handshake TLS & ms & Cliente: do fim do connect() até o retorno do SSL\_connect(). \\
+Sucesso & sim/não & Cliente: handshake concluído dentro do limite de tempo. \\
+Segmentos do ClientHello & número & Captura: segmentos de dados do cliente antes da primeira resposta do servidor. \\
+Segmentos da resposta do servidor & número & Captura: segmentos do ServerHello até o Finished do servidor. \\
+Retransmissões & número & Captura: segmentos marcados pelo tshark como retransmissão, nos dois sentidos. \\
+\bottomrule
+\end{tabular}
+\fonte{Elaborado pelos autores.}
+\end{table}
+
+\subsection{Matriz de testes e procedimento}
+\label{subsec:matriz}
+
+A matriz combinou as quatro configurações com quatro taxas de perda e três
+valores de atraso, aplicados por sentido (Tabela~\ref{tab:matriz-experimento}).
+Um atraso de 50~ms em cada sentido corresponde a um RTT de cerca de
+100~ms, e a perda segue o modelo do netem, em que cada pacote é descartado
+de forma independente com a probabilidade configurada. O planejamento
+previa 30 tentativas por cenário, mas uma primeira coleta completa com esse
+número mostrou estimativas muito instáveis para as caudas da distribuição,
+já que o p95 de 30 tentativas depende só das duas mais lentas. Por isso, a
+coleta usada neste relatório tem 100 tentativas por cenário, o que dá
+$4 \times 4 \times 3 = 48$ cenários e 4800 handshakes, executados em cerca
+de 90 minutos.
+
+\begin{table}[H]
+\centering
+\caption{Matriz de testes executada}
 \label{tab:matriz-experimento}
 \small
 \begin{tabular}{p{4cm}p{9cm}}
 \toprule
 Dimensão & Valores \\
 \midrule
-Grupo criptográfico & X25519; X25519MLKEM768; MLKEM768 \\
-Perda de pacotes & 0\%, 1\%, 5\% e 10\% \\
-Atraso por direção & 10, 50 e 150~ms \\
-Repetições & 30 tentativas por combinação \\
-\bottomrule
-\end{tabular}
-\fonte{Elaborado pelos autores com base na proposta do experimento.}
-\end{table}
-
-A matriz contém $3\times4\times3=36$ cenários; com 30 tentativas por
-cenário, estão previstas $36\times30=1080$ tentativas de conexão. As
-30 repetições são um ponto de partida para observar a variabilidade,
-mas não garantem, isoladamente, significância estatística. Poderá ser
-realizado ainda um cenário de referência sem atraso e sem perda
-artificiais, caso os recursos e o tempo permitam.
-
-As variáveis de resposta e seus métodos de observação são descritos na
-Tabela~\ref{tab:metricas-experimento}. Os resultados serão registrados
-por tentativa, incluindo as falhas, sem considerar apenas as conexões
-bem-sucedidas.
-
-\begin{table}[H]
-\centering
-\caption{Métricas planejadas e critérios de coleta}
-\label{tab:metricas-experimento}
-\small
-\begin{tabular}{p{3.9cm}p{1.7cm}p{7.3cm}}
-\toprule
-Métrica & Unidade & Critério de observação \\
-\midrule
-Duração do handshake & ms & Intervalo medido no cliente, desde o início da tentativa até a confirmação do handshake completo. \\
-Volume transmitido & bytes & Quantidade de dados associada à negociação, obtida nas capturas. \\
-Segmentos TCP & número & Segmentos observados durante cada conexão. \\
-Retransmissões TCP & número & Retransmissões identificadas nas capturas de tráfego. \\
-Taxa de sucesso & \% & Proporção de tentativas concluídas antes do limite de tempo definido. \\
+Configuração & X25519; X25519MLKEM768; MLKEM768; padrão do OpenSSL (X25519MLKEM768 + X25519) \\
+Perda de pacotes & 0\%, 1\%, 5\% e 10\%, em cada sentido \\
+Atraso & 10, 50 e 150~ms em cada sentido \\
+Repetições & 100 tentativas por cenário \\
 \bottomrule
 \end{tabular}
 \fonte{Elaborado pelos autores.}
 \end{table}
 
-A medição temporal precisará distinguir a duração observada pelo cliente
-do custo de inicialização do programa utilizado para estabelecer a
-conexão. Esse critério será validado no ensaio piloto, antes da coleta
-completa. Um limite de tempo para tentativas malsucedidas também será
-fixado e documentado. Para cada cenário serão calculados média, mediana,
-desvio padrão e, quando a quantidade de observações permitir, percentil
-95 dos tempos de conexão concluída. A taxa de falhas será apresentada
-separadamente, evitando que a exclusão dos timeouts produza uma
-interpretação incorreta dos resultados.
-
-\subsection{Procedimento experimental e pseudocódigo}
-\label{subsec:procedimento}
-
-Primeiro, serão verificadas as versões das ferramentas, o suporte aos
-grupos criptográficos e a negociação TLS~1.3 em uma rede sem degradação.
-Após esse ensaio piloto, a automação aplicará cada combinação de atraso,
-perda e grupo criptográfico. O cliente realizará novas conexões,
-registrando a duração, o estado de sucesso ou falha e o identificador da
-captura correspondente. Ao término de cada cenário, as regras de
-emulação serão removidas, inclusive em caso de erro.
-
-A Figura~\ref{alg:coleta} apresenta o pseudocódigo planejado.
+Antes da coleta completa, um ensaio piloto sem atraso e sem perda
+confirmou que cada configuração negociava o grupo esperado e que os
+tamanhos das mensagens batiam com os do mini-exemplo. Na coleta, os
+cenários foram percorridos com a configuração no laço mais interno, para
+que as quatro configurações de um mesmo cenário de rede fossem medidas em
+sequência, sob as mesmas condições da máquina. A Figura~\ref{alg:coleta}
+mostra o procedimento implementado no script executar.py.
 
 \begin{figure}[H]
 \centering
-\caption{Pseudocódigo para automação da matriz experimental}
+\caption{Pseudocódigo do procedimento implementado}
 \label{alg:coleta}
 \begin{minipage}{0.97\linewidth}
 \small
 \ttfamily
 \begin{tabbing}
 xx\=xx\=xx\=xx\=\kill
-ALGORITMOS $\leftarrow$ [X25519, X25519MLKEM768, MLKEM768]\\
-PERDAS $\leftarrow$ [0, 1, 5, 10]\%\\
-ATRASOS $\leftarrow$ [10, 50, 150] ms\\
-REPETICOES $\leftarrow$ 30\\[3pt]
-Verificar ambiente, grupos e certificados\\
-Preparar arquivo de resultados e ensaio piloto\\
-para cada algoritmo em ALGORITMOS:\\
-\> Configurar cliente e servidor para o algoritmo\\
-\> para cada perda em PERDAS:\\
-\>\> para cada atraso em ATRASOS:\\
-\>\>\> Aplicar perda e atraso nas interfaces de rede\\
+CONFIGURACOES $\leftarrow$ [X25519, X25519MLKEM768, MLKEM768, padrao]\\
+PERDAS $\leftarrow$ [0, 1, 5, 10]\%;\ ATRASOS $\leftarrow$ [10, 50, 150] ms\\
+REPETICOES $\leftarrow$ 100;\ LIMITE $\leftarrow$ 10 s\\[3pt]
+Criar redes e containers (cliente, roteador, servidor)\\
+Desligar TSO/GSO/GRO; desligar cache de metricas TCP\\
+para cada perda em PERDAS:\\
+\> para cada atraso em ATRASOS:\\
+\>\> para cada configuracao em CONFIGURACOES:\\
+\>\>\> Aplicar netem (atraso, perda) nas duas saidas do roteador\\
+\>\>\> Iniciar tcpdump no roteador (pacotes que chegam)\\
 \>\>\> para repeticao $\leftarrow$ 1 ate REPETICOES:\\
-\>\>\>\> Iniciar captura individual e cronometro\\
-\>\>\>\> Estabelecer nova conexao TLS 1.3\\
-\>\>\>\> Registrar duracao, sucesso ou timeout\\
-\>\>\>\> Encerrar e identificar a captura\\
-\>\>\> Remover regras de emulacao (mesmo se falhar)\\[3pt]
-Extrair metricas de trafego e consolidar por cenario\\
-Gerar tabelas, graficos e estatisticas
+\>\>\>\> t0 $\leftarrow$ relogio(); connect(); t1 $\leftarrow$ relogio()\\
+\>\>\>\> SSL\_connect(); t2 $\leftarrow$ relogio()\\
+\>\>\>\> Registrar t1 $-$ t0, t2 $-$ t1, sucesso ou falha, porta\\
+\>\>\> Parar tcpdump; remover netem (mesmo se falhar)\\[3pt]
+Extrair segmentos, bytes e retransmissoes das capturas (tshark)\\
+Calcular estatisticas por cenario e gerar graficos
 \end{tabbing}
 \end{minipage}
 \fonte{Elaborado pelos autores.}
 \end{figure}
 
-Os resultados serão organizados em arquivos CSV, com campos para grupo
-criptográfico, taxa de perda, atraso, número da repetição, duração,
-resultado da negociação e caminho do arquivo de captura. A extração de
-métricas de tráfego deverá restringir a análise à conexão correspondente,
-e o procedimento de filtragem será documentado para permitir a
-reprodução das medições.
+Para cada cenário, foram calculados a taxa de sucesso, a média, a mediana,
+o desvio padrão e o percentil~95 (p95) do tempo do handshake TLS nas
+tentativas concluídas, além da porcentagem de conexões com pelo menos uma
+retransmissão. Como discutido na Seção~\ref{sec:rede}, a média esconde os
+casos lentos, e mesmo o p95 de 100 tentativas depende de apenas cinco
+delas. Por isso, a análise principal usa uma medida mais estável, a
+porcentagem de handshakes lentos, definidos como aqueles que levaram pelo
+menos meio RTT (mais 5~ms de folga) além da mediana do mesmo grupo e
+atraso sem perda. Como qualquer recuperação de perda custa pelo menos
+cerca de um RTT, esse limiar separa as conexões que precisaram se
+recuperar das que não precisaram. Para essa medida, os três atrasos de uma
+mesma configuração e taxa de perda foram agrupados, somando 300
+tentativas, e o intervalo de confiança de 95\% foi calculado pelo método
+de Wilson.
 
-\subsection{Topologia do ambiente}
-\label{subsec:topologia}
 
-A Figura~\ref{fig:topologia-experimento} apresenta a topologia lógica
-planejada. Cliente e servidor estabelecem uma conexão TCP protegida por
-TLS~1.3 sobre a rede virtual. O tc netem não é um serviço
-intermediário independente: suas regras serão aplicadas às interfaces
-pertinentes, em ambos os sentidos. O tcpdump fará a captura do
-tráfego para análise posterior no Wireshark.
+\section{Resultados}
+\label{sec:resultados}
+
+Dos 4800 handshakes executados, 4799 foram concluídos dentro do limite de
+tempo. A única falha ocorreu com o MLKEM768, com 5\% de perda e atraso de
+150~ms: o servidor confirmou o recebimento do ClientHello, mas o cliente
+encerrou a conexão com erro de TLS cerca de 1,1~segundo depois, bem antes
+do limite de 10~segundos, e a captura não permitiu identificar a causa com
+segurança. Essa tentativa foi contada como lenta nas análises a seguir.
+
+As capturas confirmaram a estrutura de segmentos observada no mini-exemplo.
+Em todas as conexões, o ClientHello ocupou um segmento no X25519, no
+X25519MLKEM768 e no MLKEM768, e dois no padrão do OpenSSL, enquanto a
+resposta do servidor ocupou um segmento no X25519 e dois nas três
+configurações pós-quânticas. Somando o ClientHello e a resposta do
+servidor, cada handshake depende, portanto, de 2, 3, 3 e 4 segmentos de
+dados, respectivamente.
+
+\subsection{Sem perda de pacotes}
+
+Sem perda, as quatro configurações tiveram praticamente o mesmo
+desempenho. Com atraso de 50~ms por sentido, a mediana do handshake TLS
+foi de 104,8~ms no X25519, 106,3~ms no X25519MLKEM768, 105,2~ms no MLKEM768
+e 106,4~ms no padrão do OpenSSL, o que corresponde a um RTT de 100~ms mais
+poucos milissegundos de processamento. A maior diferença em relação ao
+X25519 foi de 1,6~ms, cerca de 1,5\%, e o mesmo padrão se repetiu com 10 e
+150~ms de atraso. Nenhuma conexão sem perda foi classificada como lenta.
+
+\subsection{Com perda de pacotes}
+
+Com perda, a mediana continuou praticamente igual à do cenário sem perda
+em todas as configurações, porque a maior parte das conexões não perdeu
+nenhum segmento do handshake. Mesmo com 10\% de perda e atraso de 50~ms, as
+medianas ficaram entre 105,3 e 106,8~ms. O efeito da perda apareceu nas
+conexões que precisaram se recuperar, como mostra a
+Figura~\ref{fig:cdf}, em que cada curva sobe rapidamente até cerca de
+60--75\% das conexões e depois forma degraus, que correspondem aos tempos
+de recuperação do TCP.
 
 \begin{figure}[H]
 \centering
-\caption{Topologia lógica proposta para os testes em rede degradada}
-\label{fig:topologia-experimento}
-\begin{tikzpicture}[>=Stealth, font=\small,
-  endpoint/.style={draw=classico, rounded corners=3pt, fill=classico!8,
-    minimum width=3.3cm, minimum height=1.2cm, align=center},
-  monitor/.style={draw=pq, rounded corners=3pt, fill=pq!8,
-    minimum width=4.0cm, minimum height=0.9cm, align=center}]
-  \node[endpoint] (cli) at (0,0) {Cliente TLS~1.3\\OpenSSL};
-  \node[endpoint] (srv) at (10,0) {Servidor TLS~1.3\\OpenSSL};
-  \draw[<->, thick] (cli.east) -- node[above, align=center]
-    {Rede virtual Docker\\TCP / TLS~1.3} (srv.west);
-  \node[monitor] (netem) at (5,-1.9) {tc netem nas interfaces\\atraso + perda nos dois sentidos};
-  \draw[dashed, ->, pq] (netem.north) -- (5,-0.28);
-  \node[monitor] (cap) at (5,-3.5) {Capturas tcpdump (PCAP)\\análise posterior no Wireshark};
-  \draw[->, thick, pq] (netem.south) -- (cap.north);
-\end{tikzpicture}
+\caption{Distribuição acumulada do tempo do handshake TLS com 10\% de perda}
+\label{fig:cdf}
+\includegraphics[width=\linewidth]{experimento/resultados/figuras/cdf_tls_perda_max.pdf}
 \fonte{Elaborado pelos autores.}
 \end{figure}
 
-Com essa configuração, a análise poderá contrastar os custos observados
-dos grupos clássicos, híbridos e pós-quânticos em condições equivalentes,
-verificando se diferenças de tamanho e segmentação se refletem em
-retransmissões, duração do handshake ou taxa de falhas. As medições e sua
-discussão serão apresentadas na entrega final do trabalho.
+A Tabela~\ref{tab:lentos} e a Figura~\ref{fig:lentos} resumem a porcentagem
+de handshakes lentos em cada configuração, com os três atrasos agrupados.
+Com 1\% de perda, as diferenças são pequenas e os intervalos de confiança
+se sobrepõem. Com 5\%, as três configurações pós-quânticas tiveram cerca de
+17\% de handshakes lentos, praticamente o dobro dos 8,7\% do X25519. Com
+10\%, a porcentagem chegou a 25,7\% no X25519, 31,0\% no MLKEM768, 35,3\% no
+X25519MLKEM768 e 42,0\% no padrão do OpenSSL. A tabela também mostra a
+previsão da Equação~\eqref{eq:perda}, $1-(1-p)^n$, calculada com o número $n$ de
+segmentos do ClientHello e da resposta do servidor de cada configuração.
+
+\begin{table}[H]
+\centering
+\caption{Handshakes TLS lentos e atraso médio extra por handshake, com os três atrasos agrupados (300 tentativas por linha)}
+\label{tab:lentos}
+\small
+\begin{tabular}{llccc}
+\toprule
+Perda & Configuração & Lentos (\%) [IC 95\%] & Previsto (\%) & Extra médio (ms) \\
+\midrule
+1\% & X25519 & 1,3 [0,5; 3,4] & 2,0 & 5,3 \\
+1\% & X25519MLKEM768 & 3,0 [1,6; 5,6] & 3,0 & 9,5 \\
+1\% & MLKEM768 & 1,7 [0,7; 3,8] & 3,0 & 7,0 \\
+1\% & Padrão OpenSSL & 5,3 [3,3; 8,5] & 3,9 & 20,5 \\
+\midrule
+5\% & X25519 & 8,7 [6,0; 12,4] & 9,8 & 41,4 \\
+5\% & X25519MLKEM768 & 17,0 [13,2; 21,7] & 14,3 & 64,0 \\
+5\% & MLKEM768 & 17,7 [13,8; 22,4] & 14,3 & 77,2 \\
+5\% & Padrão OpenSSL & 17,7 [13,8; 22,4] & 18,6 & 86,8 \\
+\midrule
+10\% & X25519 & 25,7 [21,1; 30,9] & 19,0 & 144,7 \\
+10\% & X25519MLKEM768 & 35,3 [30,1; 40,9] & 27,1 & 235,5 \\
+10\% & MLKEM768 & 31,0 [26,0; 36,5] & 27,1 & 217,3 \\
+10\% & Padrão OpenSSL & 42,0 [36,5; 47,6] & 34,4 & 286,7 \\
+\bottomrule
+\end{tabular}
+\fonte{Elaborado pelos autores. O extra médio é a diferença entre o tempo do handshake TLS e a mediana do mesmo grupo e atraso sem perda.}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\caption{Handshakes TLS lentos medidos (com intervalo de confiança de 95\%) e previstos pela Equação~\eqref{eq:perda}}
+\label{fig:lentos}
+\includegraphics[width=0.85\linewidth]{experimento/resultados/figuras/lentos_por_perda.pdf}
+\fonte{Elaborado pelos autores.}
+\end{figure}
+
+O custo médio acompanha essa porcentagem. Com 10\% de perda, o handshake
+TLS do X25519 levou, em média, 144,7~ms a mais do que sem perda, enquanto o
+do X25519MLKEM768 levou 235,5~ms a mais, cerca de 63\% de acréscimo sobre o
+clássico, e o do padrão do OpenSSL, 286,7~ms. O custo de cada recuperação,
+por outro lado, dependeu mais do atraso da rede do que da configuração: a
+mediana do tempo extra dos handshakes lentos foi de 227~ms com atraso de
+10~ms, de 308~ms com 50~ms e de 847~ms com 150~ms por sentido.
+
+\subsection{Efeito da perda do SYN}
+
+A análise das capturas revelou um efeito que não havia sido previsto no
+planejamento. Quando o SYN ou o SYN-ACK se perde durante o handshake TCP, o
+handshake TLS das configurações pós-quânticas fica lento com muito mais
+frequência, mesmo que nenhum segmento do TLS se perca. A
+Figura~\ref{fig:syn} separa os handshakes com 5 e 10\% de perda conforme a
+perda do SYN. No X25519, a porcentagem de handshakes lentos foi praticamente
+a mesma nos dois casos (17,0\% e 18,1\%), mas nas configurações
+pós-quânticas ela passou de cerca de 21--27\% para 45--51\% quando o SYN ou o
+SYN-ACK foi perdido. Entre os handshakes com SYN perdido e sem nenhuma
+retransmissão de dados, 49 das configurações pós-quânticas ficaram lentos,
+contra nenhum do X25519.
+
+\begin{figure}[H]
+\centering
+\caption{Handshakes TLS lentos com 5 e 10\% de perda, separados pela perda do SYN ou do SYN-ACK}
+\label{fig:syn}
+\includegraphics[width=0.85\linewidth]{experimento/resultados/figuras/lentos_por_perda_de_syn.pdf}
+\fonte{Elaborado pelos autores.}
+\end{figure}
+
+
+\section{Discussão}
+\label{sec:discussao}
+
+Os resultados confirmam a hipótese da Seção~\ref{sec:rede}. Sem perda, a
+troca de chaves pós-quântica praticamente não altera o tempo do handshake,
+já que os bytes a mais custam pouco em uma rede com folga de banda e não
+acrescentam idas e voltas. Com perda, as configurações pós-quânticas, que
+dependem de mais segmentos, ficam lentas com mais frequência, e esse efeito
+aparece na cauda da distribuição, e não na mediana, como também observaram
+Kampanakis e Childs-Klein (2024). Isso ajuda a explicar por que o aumento de
+4\% na mediana relatado pelo Chrome (ADRIAN et al., 2024) não apareceu
+aqui: em uma rede sem perda, a divisão do ClientHello quase não tem custo,
+e o efeito medido pelo Chrome vem da mistura de redes reais, algumas delas
+com perda.
+
+A previsão $1-(1-p)^n$ funcionou bem para perdas de até 5\%, com valores
+dentro ou muito perto dos intervalos de confiança, mas subestimou as
+configurações pós-quânticas com 10\% de perda. A diferença é explicada pelo
+efeito da perda do SYN. Segundo a RFC~5681, quando o SYN ou o SYN-ACK é
+retransmitido, a janela inicial do TCP deve ser reduzida a um único segmento
+(ALLMAN; PAXSON; BLANTON, 2009, seção 3.1). Para o X25519, cujas mensagens
+cabem em um segmento, essa redução não faz diferença, mas o servidor
+pós-quântico só consegue enviar o primeiro dos dois segmentos da resposta e
+precisa esperar o ACK do cliente para enviar o segundo, o que acrescenta um
+RTT inteiro. No padrão do OpenSSL, o mesmo acontece também do lado do
+cliente, porque o ClientHello também tem dois segmentos. Com 10\% de perda
+em cada sentido, cerca de 19\% das conexões perdem o SYN ou o SYN-ACK, o que
+torna esse efeito comparável ao das perdas no próprio handshake TLS. Esse
+efeito é uma consequência direta da janela inicial discutida na
+Seção~\ref{sec:rede}, que, mesmo com certificados clássicos, já pesa quando
+a janela é reduzida por uma perda anterior.
+
+O custo de cada recuperação também foi maior do que a estimativa
+simplificada da Seção~\ref{sec:rede}, de cerca de 2~RTTs. Com atraso de
+10~ms por sentido, a mediana do tempo extra foi de 227~ms, mais de 11 vezes
+o RTT de 20~ms. As capturas mostram que isso acontece quando o segmento
+perdido é o último da mensagem, como o pedaço de 3~bytes do ClientHello do
+padrão do OpenSSL ou o fim da resposta do servidor. Nesse caso, a RFC~8985
+recomenda que, havendo um único segmento pendente, o temporizador da sonda
+TLP também espere um possível ACK atrasado, de até 200~ms (CHENG et al.,
+2021, seção 7.2), o que explica um custo de cerca de 250~ms mesmo em uma
+rede rápida. Quando o segmento perdido é o primeiro de dois, o seguinte
+chega e gera um ACK duplicado, e a recuperação leva cerca de um RTT, o que
+mostra que a posição da perda importa tanto quanto o número de segmentos.
+
+Entre as configurações pós-quânticas, o X25519MLKEM768 e o MLKEM768 tiveram
+desempenho estatisticamente equivalente, com intervalos de confiança
+sobrepostos em todas as taxas de perda. Isso era esperado, já que os dois
+têm a mesma estrutura de segmentos e diferem em apenas 32~bytes por
+mensagem, e mostra que a proteção adicional do modo híbrido, discutida na
+Seção~\ref{sec:hibrido}, não tem custo de rede perceptível. Já o padrão do
+OpenSSL, que envia duas chaves para evitar um HelloRetryRequest, foi o mais
+afetado pela perda, porque essa estratégia faz o ClientHello passar do
+limite de um segmento por apenas 3~bytes.
+
+Algumas limitações devem ser consideradas na interpretação desses
+resultados. A rede foi emulada em uma única máquina, com perdas
+independentes e sem reordenação, rajadas de perda ou variação de atraso,
+que são comuns em redes reais. Os mecanismos de recuperação observados,
+como a sonda TLP e a redução da janela após a perda do SYN, são os do
+kernel Linux e podem se comportar de outra forma em outros sistemas. O
+experimento também manteve os certificados clássicos, então a resposta do
+servidor ficou bem abaixo da janela inicial de 14\,600~bytes, cenário que
+mudaria com certificados e assinaturas pós-quânticos. Por fim, com 100
+tentativas por cenário, as estimativas de cauda ainda têm incerteza
+considerável, o que motivou o uso dos intervalos de confiança e da
+agregação dos três atrasos.
+
+
+\section{Conclusão}
+\label{sec:conclusao}
+
+Este trabalho estudou o TLS~1.3 com troca de chaves baseada no ML-KEM, desde
+a estrutura do handshake e o funcionamento do ML-KEM até o efeito das
+chaves maiores na rede, e mediu esse efeito em 4800 handshakes sob
+diferentes condições de perda e atraso. O mini-exemplo mostrou que as
+chaves pós-quânticas fazem a resposta do servidor passar de um para dois
+segmentos e que, no padrão do OpenSSL, o ClientHello também é dividido, e o
+experimento mostrou o que isso significa em uma rede degradada.
+
+Sem perda, o custo de rede da troca de chaves pós-quântica foi desprezível,
+de cerca de 1,5\% na mediana. Com perda, a mediana continuou estável, mas a
+porcentagem de handshakes lentos aumentou de forma consistente com o número
+de segmentos de cada configuração, chegando a 42\% no padrão do OpenSSL com
+10\% de perda, contra 25,7\% no X25519. Além do efeito previsto, o
+experimento revelou que a perda do SYN prejudica muito mais as
+configurações pós-quânticas, porque a redução da janela inicial impede que
+as mensagens de dois segmentos sejam enviadas de uma só vez. O modo híbrido
+teve o mesmo custo de rede do ML-KEM puro, o que reforça seu uso como
+padrão.
+
+Como trabalhos futuros, seria interessante repetir o experimento com
+certificados e assinaturas pós-quânticos, como o ML-DSA, em que a resposta
+do servidor pode passar da janela inicial do TCP; com modelos de perda em
+rajada e redes reais; e com o QUIC, que tem seus próprios mecanismos de
+recuperação de perda e onde o tamanho do ClientHello também é limitado pelo
+tamanho dos pacotes UDP.
 
 
 % REFERÊNCIAS
@@ -1120,10 +1346,11 @@ Disponível em: \url{https://www.rfc-editor.org/info/rfc9954}. Acesso em:
 % USO DE IA (o enunciado pede a indicação na seção de referências)
 \subsection*{Uso de ferramentas de inteligência artificial}
 
-Durante a elaboração deste relatório parcial, foram utilizadas ferramentas de
+Durante a elaboração deste trabalho, foram utilizadas ferramentas de
 inteligência artificial generativa como apoio à escolha e à organização do
-tema, à pesquisa, ao planejamento experimental, à coleta do mini-exemplo e
-à redação do documento. As informações e
+tema, à pesquisa, ao planejamento experimental, à coleta do mini-exemplo,
+à implementação e execução do experimento, à análise dos dados e à
+redação do documento. As informações e
 sugestões fornecidas foram avaliadas pelos autores, que permanecem
 responsáveis pela verificação das fontes, pelas decisões técnicas e pelo
 conteúdo final do trabalho. A Tabela~\ref{tab:uso-ia} apresenta as ferramentas
@@ -1148,8 +1375,11 @@ textual e à organização e formatação do relatório em \LaTeX{}. \\
 Claude\newline (ANTHROPIC, 2026) & Apoio à pesquisa de fontes e à compreensão dos
 conteúdos (handshake do TLS~1.3, ML-KEM e comportamento do TCP), à
 elaboração das figuras em TikZ, à criação dos scripts de captura do
-mini-exemplo e à extração das medidas da Tabela~\ref{tab:captura}, e à
-revisão textual do relatório. \\
+mini-exemplo, à implementação do código do experimento (cliente em C,
+automação da matriz e análise das capturas), à geração dos gráficos, à
+redação de uma primeira versão das Seções~\ref{sec:experimento} a
+\ref{sec:conclusao}, revisada pelos autores, e à revisão textual do
+relatório. \\
 \bottomrule
 \end{tabular}
 \fonte{Elaborado pelos autores (2026).}

@@ -1,0 +1,7 @@
+data: 2026-11-24 09:47:47
+host: Linux 7.0.0-43-generic
+docker: 29.6.0
+openssl (containers): OpenSSL 3.5.9 29 Sep 2026 (Library: OpenSSL 3.5.9 29 Sep 2026)
+interfaces do roteador: eth0 eth1
+MTU cliente: 1500
+timeout por operacao: 10 s
