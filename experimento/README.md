@@ -15,16 +15,75 @@ Matriz: perdas de 0, 1, 5 e 10% × atrasos de 10, 50 e 150 ms por sentido ×
 A pasta `resultados_30rep/` guarda uma primeira coleta com 30 repetições, que
 mostrou estimativas de cauda instáveis e motivou o aumento para 100.
 
-## Como rodar
+## Preparação
 
-Precisa só de Docker e Python 3 (sem sudo).
+Em Linux com Python 3 e acesso ao serviço Docker, abra o diretório do experimento.
+O Docker compila a imagem com OpenSSL, o cliente e as ferramentas de análise.
 
 ```sh
-python3 executar.py --piloto          # teste rápido: 3 handshakes por grupo, sem netem
-python3 executar.py --repeticoes 100  # matriz completa (~90 min), grava em resultados/
-docker run --rm -u $(id -u):$(id -g) -e MPLCONFIGDIR=/tmp -v "$PWD:/w" -w /w \
-    tls-pq-experimento python3 analisar.py resultados
+git clone https://github.com/beatriz-repette/trabalho-seguranca.git
+cd trabalho-seguranca/experimento
+docker info
+docker build -t tls-pq-experimento .
 ```
+
+## Reproduzir as estatísticas usando os dados existentes
+
+A coleta de 24/11/2026 está no commit `2937eab`. A partir de `experimento/`,
+copie apenas as entradas para uma pasta de trabalho. A análise usa as 48
+capturas e as durações medidas pelo cliente. Os resultados de referência ficam
+preservados em `resultados/`.
+
+```sh
+analise=$(mktemp -d -p "$PWD" reanalise.XXXXXX)
+cp -r resultados/capturas resultados/medicoes.csv "$analise/"
+docker run --rm -u $(id -u):$(id -g) -e MPLCONFIGDIR=/tmp -v "$PWD:/w" -w /w \
+    tls-pq-experimento python3 analisar.py "$(basename "$analise")"
+```
+
+Em um ambiente com tshark, pandas e matplotlib instalados, o último comando
+também pode ser substituído por `python3 analisar.py "$analise"`. Para conferir
+o resultado, compare `resumo.csv` e `lentos_por_perda.csv` com as tabelas do PDF.
+A matriz tem 48 linhas de resumo e 4.799 conexões concluídas em 4.800 tentativas.
+Na linha do padrão OpenSSL com 10% de perda, devem aparecer 126 conexões lentas
+em 300 e 286,74 ms na coluna `extra_medio_ms`. Essa coluna usa apenas os
+handshakes concluídos. Para o caso de erro, abra `MLKEM768_p5_a150.pcap` no
+Wireshark e aplique o filtro `tcp.port == 47956`.
+
+## Testar a coleta ou fazer uma nova medição
+
+O piloto testa as quatro configurações, com três tentativas por configuração e
+sem atraso ou perda adicionais. Use uma pasta nova para cada execução.
+
+```sh
+python3 executar.py --piloto --saida piloto-local
+```
+
+O resultado esperado é uma linha `3/3 ok` para cada configuração, quatro
+arquivos em `piloto-local/capturas/` e 12 medições em `piloto-local/medicoes.csv`.
+Para uma nova matriz completa, execute:
+
+```sh
+python3 executar.py --repeticoes 100 --saida coleta-local
+```
+
+O padrão sem `--repeticoes` é 30. Sem `--saida`, uma nova matriz grava em
+`resultados/` e pode sobrescrever a coleta publicada. Os tempos e as contagens
+de perdas variam entre coletas. Para analisar uma nova matriz, passe a pasta
+da coleta completa para `analisar.py`. O piloto serve para verificar o ambiente.
+
+## Compilar o relatório
+
+Com uma distribuição LaTeX que inclua pdfLaTeX, latexmk, TikZ, lmodern e
+suporte ao português, execute a partir de `experimento/`:
+
+```sh
+cd ..
+latexmk -pdf -interaction=nonstopmode -halt-on-error relatorio.tex
+```
+
+O arquivo de entrega é `relatorio.pdf`. As figuras da coleta principal já estão
+incluídas no repositório.
 
 ## Como funciona
 

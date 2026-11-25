@@ -138,9 +138,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--repeticoes", type=int, default=30)
     ap.add_argument("--piloto", action="store_true", help="3 handshakes por grupo, sem netem")
+    ap.add_argument("--saida", type=Path, help="diretório novo para preservar a coleta publicada")
     args = ap.parse_args()
 
-    res = AQUI / ("piloto" if args.piloto else "resultados")
+    res = args.saida.resolve() if args.saida else AQUI / ("piloto" if args.piloto else "resultados")
+    if args.saida and res.exists() and (not res.is_dir() or any(res.iterdir())):
+        ap.error("--saida precisa apontar para um diretório novo ou vazio")
     capturas = res / "capturas"
     capturas.mkdir(parents=True, exist_ok=True)
     montar_ambiente(capturas)

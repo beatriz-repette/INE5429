@@ -29,7 +29,9 @@ def metricas_captura(pcap: Path) -> pd.DataFrame:
     cmd = ["tshark", "-r", str(pcap), "-T", "fields", "-E", "separator=\t"]
     for c in campos:
         cmd += ["-e", c]
-    saida = subprocess.run(cmd, capture_output=True, text=True).stdout
+    saida = subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
+    if not saida.strip():
+        raise ValueError(f"Captura vazia: {pcap}")
     conexoes = {}
     for linha in saida.splitlines():
         src, sport, dport, tlen, syn, ack, retr, fretr = (linha.split("\t") + [""] * 8)[:8]
@@ -141,6 +143,11 @@ def main(pasta: str):
         perda_syn_pct=("perdeu_syn", lambda s: 100 * s.mean()),
     ).reset_index()
     agrup["lentos_pct"] = 100 * agrup["lentos"] / agrup["tentativas"]
+    # A duração TLS só está definida nas conexões concluídas.
+    extras = (ok.assign(extra_ms=ok["tls_ms"] - ok["tls_base"])
+              .groupby(["grupo", "perda_pct"])["extra_ms"]
+              .agg(concluidos="count", extra_medio_ms="mean"))
+    agrup = agrup.join(extras, on=["grupo", "perda_pct"])
     ic = agrup.apply(lambda r: wilson(r["lentos"], r["tentativas"]), axis=1)
     agrup["ic95_inf"] = [100 * x[0] for x in ic]
     agrup["ic95_sup"] = [100 * x[1] for x in ic]
