@@ -21,8 +21,8 @@ Em Linux com Python 3 e acesso ao serviço Docker, abra o diretório do experime
 O Docker compila a imagem com OpenSSL, o cliente e as ferramentas de análise.
 
 ```sh
-git clone https://github.com/beatriz-repette/trabalho-seguranca.git
-cd trabalho-seguranca/experimento
+git clone https://github.com/beatriz-repette/INE5429.git
+cd INE5429/experimento
 docker info
 docker build -t tls-pq-experimento .
 ```

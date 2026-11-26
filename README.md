@@ -9,8 +9,8 @@ Para conferir os números do PDF, siga as etapas 1 e 2. Para observar o experime
 Use Linux com Git, Python 3 e acesso ao serviço Docker. A primeira construção da imagem precisa de internet para obter o Alpine e os pacotes. O container inclui OpenSSL, tshark e as bibliotecas Python de análise.
 
 ```bash
-git clone https://github.com/beatriz-repette/trabalho-seguranca.git
-cd trabalho-seguranca
+git clone https://github.com/beatriz-repette/INE5429.git
+cd INE5429
 docker info
 docker build -t tls-pq-experimento ./experimento
 ```
@@ -74,3 +74,7 @@ analisar_tls "$coleta"
 ```
 
 Em uma nova coleta, confira os 48 cenários, as 100 tentativas por cenário e as 48 capturas. Os tempos e os percentuais podem variar porque as perdas são aleatórias. Para reproduzir os valores exatos apresentados no PDF, use as capturas publicadas na etapa 2.
+
+## Mini-exemplo da Seção 2.5
+
+A pasta [captura/](captura/) tem os scripts e as capturas do mini-exemplo, que mostra em quantos segmentos TCP o ClientHello e a resposta do servidor viajam em cada configuração, sem atraso nem perda. Para repetir, execute `./captura/capturar.sh` (precisa só de Docker).

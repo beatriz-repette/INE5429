@@ -106,7 +106,7 @@ discutidos na Seção~\ref{sec:discussao}, e a Seção~\ref{sec:conclusao}
 conclui o trabalho.
 
 O código, os dados coletados e as instruções para reproduzir o experimento
-estão disponíveis em \url{https://github.com/beatriz-repette/trabalho-seguranca}.
+estão disponíveis em \url{https://github.com/beatriz-repette/INE5429}.
 
 
 \section{Desenvolvimento}
@@ -779,9 +779,9 @@ cliente envia as chaves X25519MLKEM768 e X25519 juntas. Essa quarta
 configuração não estava no planejamento e foi incluída por causa do
 mini-exemplo da Seção~\ref{sec:mini}, que mostrou que ela é a única em que o
 ClientHello ocupa dois segmentos. As medições e as capturas estão na pasta
-\nolinkurl{experimento/resultados}, na
-\href{https://github.com/beatriz-repette/trabalho-seguranca/tree/2937eab85f46be9bb8c3c445aecea49ff93a9fde/experimento/resultados}{versão dos dados identificada pelo commit \texttt{2937eab}}.
-A pasta \nolinkurl{resultados_30rep} contém a coleta preliminar.
+\nolinkurl{experimento/resultados} do repositório, na
+\href{https://github.com/beatriz-repette/INE5429/tree/2937eab85f46be9bb8c3c445aecea49ff93a9fde/experimento/resultados}{versão identificada pelo commit 2937eab},
+e a pasta \nolinkurl{resultados_30rep} guarda a coleta preliminar.
 
 \subsection{Ambiente e topologia}
 \label{subsec:ambiente}
@@ -871,14 +871,19 @@ handshake TCP, até o connect() retornar, e o handshake TLS, do fim
 do connect() até o SSL\_connect() retornar, o que acontece
 quando o cliente recebe o Finished do servidor e envia o seu.
 
-Esse ponto de medição exclui o tempo da abertura TCP. Uma retransmissão de
-SYN pode, contudo, afetar o envio dos primeiros dados mesmo após a abertura,
-como discutido na Seção~\ref{sec:discussao}. O cliente configura 10~s para as
-operações bloqueantes de envio e recepção do socket. O handshake pode envolver
-várias operações, cada uma sujeita a esse limite. O sucesso corresponde ao
-retorno 1 de \texttt{SSL\_connect()}. Como o certificado ECDSA é autoassinado
-e o cliente usa \texttt{SSL\_VERIFY\_NONE}, os tempos medidos se referem a
-conexões sem validação da cadeia de confiança ou do nome do servidor.
+Essa separação é importante para a análise. A perda de um SYN atrasa a
+conexão em pelo menos um segundo, pelo temporizador inicial do TCP
+(PAXSON et al., 2011), e esse atraso não depende do grupo escolhido, já que
+o SYN não carrega nenhum dado do TLS. Por isso, a métrica principal deste
+trabalho é o tempo do handshake TLS, que deixa a abertura TCP de fora. Como
+mostra a Seção~\ref{sec:discussao}, porém, uma retransmissão do SYN ainda
+pode afetar o envio dos primeiros dados depois que a conexão é aberta.
+
+Cada operação bloqueante de envio ou recepção do cliente tem um limite de
+10~segundos, e uma tentativa só conta como sucesso quando o SSL\_connect()
+retorna sem erro. Como o certificado do servidor é autoassinado, o cliente
+não valida a cadeia de certificados nem o nome do servidor, então os tempos
+medidos não incluem essa verificação.
 
 As métricas coletadas estão na Tabela~\ref{tab:metricas-experimento}. As
 três primeiras vêm do cliente, e as demais foram extraídas das capturas com
@@ -895,7 +900,7 @@ Métrica & Unidade & Como foi obtida \\
 \midrule
 Handshake TCP & ms & Cliente: do início do connect() até o seu retorno. \\
 Handshake TLS & ms & Cliente: do fim do connect() até o retorno do SSL\_connect(). \\
-Sucesso & sim/não & Cliente: retorno de sucesso de \texttt{SSL\_connect()}. \\
+Sucesso & sim/não & Cliente: SSL\_connect() concluído sem erro. \\
 Segmentos do ClientHello & número & Captura: segmentos de dados do cliente antes da primeira resposta do servidor. \\
 Segmentos da resposta do servidor & número & Dados do servidor até o próximo envio de dados pelo cliente, excluídas as retransmissões identificadas. \\
 Retransmissões & número & Captura: segmentos marcados pelo tshark como retransmissão, nos dois sentidos. \\
@@ -995,23 +1000,21 @@ de Wilson.
 \section{Resultados}
 \label{sec:resultados}
 
-Das 4800 tentativas, 4799 concluíram o handshake. A exceção foi a repetição
-89 de \nolinkurl{MLKEM768_p5_a150.pcap}, porta do cliente 47956. O cliente
-registrou \texttt{falha\_tls} após 1395,848~ms de tempo total, incluindo
-300,643~ms de abertura TCP. A tentativa entra como lenta e fica fora das
-estatísticas de duração TLS.
+Das 4800 tentativas, 4799 concluíram o handshake. A única falha ocorreu com
+o MLKEM768, com 5\% de perda e atraso de 150~ms (repetição 89, porta 47956
+do cliente), em que o cliente encerrou a conexão com erro de TLS cerca de
+1,4~segundo após o início da tentativa, bem antes do limite de 10~segundos.
+A captura dessa conexão não permitiu identificar a causa com segurança, e
+os detalhes estão no repositório. Essa tentativa foi contada como lenta e
+ficou fora das estatísticas de duração.
 
-Em todas as conexões concluídas, o ClientHello ocupou um segmento nos três
-grupos fixados e dois no padrão do OpenSSL. A primeira resposta do servidor
-ocupou um segmento no X25519 e dois nos demais grupos. A soma típica foi
-2, 3, 3 e 4 segmentos, respectivamente. Na tentativa que falhou, o cliente
-enviou FIN no quadro 1394. Os quadros 1395, 1396 e 1398 levaram 1448,
-373 e 24~bytes do servidor. Sem outro envio de dados pelo cliente, o algoritmo
-contou o trecho de 24~bytes na fase de resposta. Os três segmentos pertencem
-a uma conexão interrompida. A causa da falha TLS permanece indeterminada.
-Os horários da captura também apresentam um salto de cerca de 43 minutos entre
-os quadros 1393 e 1394. Para essa tentativa, a duração informada acima usa
-o relógio monotônico do cliente.
+As capturas confirmaram a estrutura de segmentos observada no mini-exemplo.
+Em todas as conexões concluídas, o ClientHello ocupou um segmento no
+X25519, no X25519MLKEM768 e no MLKEM768, e dois no padrão do OpenSSL,
+enquanto a primeira resposta do servidor ocupou um segmento no X25519 e
+dois nas três configurações pós-quânticas. Somando o ClientHello e a
+resposta do servidor, cada handshake depende, portanto, de 2, 3, 3 e 4
+segmentos de dados, respectivamente.
 
 \subsection{Sem perda de pacotes}
 
@@ -1032,16 +1035,17 @@ medianas ficaram entre 105,3 e 106,8~ms. O efeito da perda apareceu nas
 conexões que precisaram se recuperar, como mostra a
 Figura~\ref{fig:cdf}, em que cada curva sobe rapidamente até cerca de
 60--75\% das conexões e depois forma degraus, que correspondem aos tempos
-de recuperação. A Figura~\ref{fig:percentis} separa os três atrasos. A 50~ms
-por sentido e 10\% de perda, X25519 e híbrido tiveram medianas de 105,36
-e 106,52~ms, mas os respectivos p95 chegaram a 717,47 e 823,50~ms.
+de recuperação. A Figura~\ref{fig:percentis} mostra a mesma diferença
+separando os três atrasos: com 50~ms por sentido e 10\% de perda, o X25519
+e o X25519MLKEM768 tiveram medianas de 105,4 e 106,5~ms, mas seus
+percentis 95 chegaram a 717,5 e 823,5~ms.
 
 \begin{figure}[htbp]
 \centering
 \caption{Mediana e percentil 95 do tempo TLS nas conexões concluídas}
 \label{fig:percentis}
 \includegraphics[width=\linewidth]{experimento/resultados/figuras/tempo_tls_por_perda.pdf}
-\fonte{Elaborado pelos autores a partir de \texttt{resumo.csv}.}
+\fonte{Elaborado pelos autores.}
 \end{figure}
 
 \begin{figure}[H]
@@ -1108,16 +1112,19 @@ mediana do tempo extra dos handshakes lentos foi de 227~ms com atraso de
 
 \subsection{Efeito da perda do SYN}
 
-A Figura~\ref{fig:syn} agrupa as tentativas sob perda de 5 e 10\%.
-Como indicador de perda na abertura TCP, o script verifica se houve mais de
-um SYN do cliente ou mais de um SYN-ACK do servidor para a conexão.
+A análise das capturas revelou um efeito que não havia sido previsto no
+planejamento. Quando o SYN ou o SYN-ACK se perde durante a abertura da
+conexão TCP, o handshake TLS das configurações pós-quânticas fica lento com
+muito mais frequência, mesmo que nenhum segmento do TLS se perca. A
+Figura~\ref{fig:syn} separa as tentativas com 5 e 10\% de perda conforme
+a captura mostre ou não mais de um SYN ou mais de um SYN-ACK na conexão.
 No X25519, a porcentagem de handshakes lentos foi praticamente
 a mesma nos dois casos (17,0\% e 18,1\%), mas nas configurações
 pós-quânticas ela passou de cerca de 21--27\% para 45--51\% quando o SYN ou o
-SYN-ACK foi retransmitido. Nesse recorte, entre as conexões com repetição na
-abertura TCP e sem retransmissão de dados identificada pelo tshark,
-49 handshakes das configurações pós-quânticas ficaram lentos,
-contra nenhum do X25519.
+SYN-ACK foi retransmitido. Entre as conexões com retransmissão na abertura
+e sem nenhuma retransmissão de dados identificada pelo tshark, 49
+handshakes das configurações pós-quânticas ficaram lentos, contra nenhum do
+X25519.
 
 \begin{figure}[H]
 \centering
@@ -1137,50 +1144,76 @@ já que os bytes a mais custam pouco em uma rede com folga de banda e não
 acrescentam idas e voltas. Com perda, as configurações pós-quânticas, que
 dependem de mais segmentos, ficam lentas com mais frequência, e esse efeito
 aparece na cauda da distribuição, e não na mediana, como também observaram
-Kampanakis e Childs-Klein (2024). Uma comparação com as observações do
-Chrome (ADRIAN et al., 2024) precisa levar em conta as diferenças de
-cliente, tamanho do ClientHello e condições de rede.
+Kampanakis e Childs-Klein (2024). Isso pode ajudar a entender por que o
+aumento de 4\% na mediana relatado pelo Chrome (ADRIAN et al., 2024) não
+apareceu aqui, onde a diferença sem perda foi de cerca de 1,5\%, embora a
+comparação seja limitada, já que o Chrome usava o Kyber, enviava um
+ClientHello maior e mediu conexões em redes reais, algumas delas com perda.
 
 A previsão $1-(1-p)^n$ funcionou bem para perdas de até 5\%, com valores
-dentro ou muito perto dos intervalos de confiança, mas subestimou as
-quatro configurações com 10\% de perda. Uma possível contribuição para essa
-diferença é a retransmissão durante a abertura TCP, que o modelo dos
-segmentos de dados deixa de fora. Uma janela inicial reduzida após essa
-retransmissão pode atrasar uma resposta que ocupa dois segmentos
-(ALLMAN; PAXSON; BLANTON, 2009, seção 3.1).
+dentro ou muito perto dos intervalos de confiança, mas subestimou as quatro
+configurações com 10\% de perda. Uma explicação compatível com as capturas é o efeito da perda
+do SYN, que o modelo deixa de fora por considerar apenas os segmentos de
+dados. Segundo a RFC~5681, quando o SYN ou o SYN-ACK é retransmitido, a
+janela inicial do TCP deve ser reduzida a um único segmento (ALLMAN; PAXSON;
+BLANTON, 2009, seção 3.1). Para o X25519, cujas mensagens cabem em um
+segmento, essa redução não faz diferença, mas o servidor pós-quântico só
+consegue enviar o primeiro dos dois segmentos da resposta e precisa esperar
+o ACK do cliente para enviar o segundo, o que acrescenta um RTT inteiro. A
+conexão da porta 51866 no cenário X25519MLKEM768 com 5\% de perda e 10~ms de
+atraso mostra essa sequência: depois da retransmissão do SYN e do SYN-ACK, o
+servidor enviou o primeiro segmento da resposta e só mandou o segundo depois
+do ACK do cliente, cerca de 20~ms mais tarde, que é o RTT dessa rede. A
+captura não mostra o valor interno da janela, mas o comportamento é o
+esperado pela RFC. Com 10\% de perda em cada sentido, cerca de 19\% das
+conexões tiveram retransmissão na abertura, o que torna esse efeito
+comparável ao das perdas no próprio handshake TLS. Ele é uma consequência
+direta da janela inicial discutida na Seção~\ref{sec:rede}, que, mesmo com
+certificados clássicos, já pesa quando é reduzida por uma perda anterior.
 
-Um exemplo aparece em \nolinkurl{X25519MLKEM768_p5_a10.pcap}, porta 51866.
-Os quadros 197--202 mostram a repetição de SYN e SYN-ACK. Na primeira resposta
-TLS, o servidor enviou 1448~bytes no quadro 206. O ACK do cliente aparece no
-207 e os 392~bytes restantes no 208, 20,49~ms após o primeiro segmento.
-O intervalo corresponde aproximadamente ao RTT configurado de 20~ms.
-A sequência é compatível com a espera por um ACK. A captura registra o
-tráfego no roteador, enquanto o valor interno da janela permanece desconhecido.
+O custo de cada recuperação também foi maior do que a estimativa
+simplificada da Seção~\ref{sec:rede}, de cerca de 2~RTTs. Com atraso de
+10~ms por sentido, a mediana do tempo extra foi de 227~ms, mais de 11 vezes
+o RTT de 20~ms. As capturas indicam que isso acontece quando o segmento
+perdido é o último da mensagem. Na conexão da porta 40576 do padrão do
+OpenSSL com 10\% de perda e 10~ms de atraso, por exemplo, o segmento com os
+últimos 3~bytes do ClientHello se perdeu e só foi retransmitido cerca de
+243~ms depois, e o handshake levou 269~ms, contra a mediana de 26~ms sem
+perda. Nesse caso, não chega nenhum segmento seguinte que gere um ACK
+duplicado, e a recuperação depende de um temporizador. A RFC~8985 recomenda
+que, havendo um único segmento pendente, o temporizador da sonda TLP
+também espere um possível ACK atrasado, de até 200~ms (CHENG et al., 2021,
+seção 7.2), o que é compatível com o intervalo observado, embora as
+capturas não permitam afirmar qual temporizador do kernel disparou a
+retransmissão. Quando o segmento perdido é o primeiro de dois, o seguinte
+chega e gera um ACK duplicado, e a recuperação é bem mais rápida, o que
+mostra que a posição da perda importa tanto quanto o número de segmentos.
 
-Outro comportamento aparece em \nolinkurl{padrao_p10_a10.pcap}, porta 40576.
-O quadro 40 levou os primeiros 1448~bytes do ClientHello e o quadro 41
-levou os últimos três. O ACK do quadro 42 confirmou os primeiros 1448.
-O quadro 43 repetiu os três bytes 242,60~ms depois do quadro 41.
-O cliente mediu 269,395~ms de TLS nessa tentativa, frente à mediana sem
-perda de 25,843~ms. O intervalo é compatível com recuperação por temporizador.
-A identificação do temporizador específico exigiria instrumentação do kernel
-(CHENG et al., 2021, seção 7.2).
-
-O híbrido e o MLKEM768 puro apresentaram a mesma contagem típica de segmentos.
-A 10\% de perda, as proporções de handshakes lentos foram 35,3\% e 31,0\%,
-respectivamente, com sobreposição dos intervalos de confiança. Uma afirmação
-de equivalência exigiria uma margem definida previamente e um teste próprio.
-O padrão do OpenSSL apresentou a maior proporção nesse cenário, 42,0\%.
-Nessa configuração, os três bytes finais do ClientHello exigiam um segundo segmento.
+Entre as configurações pós-quânticas, o X25519MLKEM768 e o MLKEM768 não
+tiveram diferença perceptível de desempenho. Com 10\% de perda, as
+porcentagens de handshakes lentos foram 35,3\% e 31,0\%, com intervalos de
+confiança sobrepostos, e o mesmo aconteceu nas outras taxas de perda. Esse
+resultado não prova que os dois sejam equivalentes, o que exigiria um teste
+estatístico próprio, mas era esperado, já que os dois têm a mesma estrutura
+de segmentos e diferem em apenas 32~bytes por mensagem. Dentro da
+precisão deste experimento, a proteção adicional do modo híbrido, discutida
+na Seção~\ref{sec:hibrido}, não teve custo de rede perceptível. Já o padrão
+do OpenSSL, que envia duas chaves para evitar um HelloRetryRequest, foi o
+mais afetado pela perda, com 42,0\% de handshakes lentos, porque essa
+estratégia faz o ClientHello passar do limite de um segmento por apenas
+3~bytes.
 
 Algumas limitações devem ser consideradas na interpretação desses
 resultados. A rede foi emulada em uma única máquina, com perdas
 independentes e sem reordenação, rajadas de perda ou variação de atraso,
-que são comuns em redes reais. O ponto de captura registrou até 200~bytes
-de cada pacote. Os cabeçalhos permitem recuperar os comprimentos TCP e os
-números de sequência, mas os registros TLS maiores aparecem truncados. A
-ordem fixa dos grupos deixa aberta a influência de variações temporais da máquina. O
-experimento também manteve os certificados clássicos, então a resposta do
+que são comuns em redes reais. Os mecanismos de recuperação observados,
+como a sonda TLP e a redução da janela após a perda do SYN, são os do
+kernel Linux e podem se comportar de outra forma em outros sistemas. As
+capturas guardaram só os primeiros 200~bytes de cada pacote, o que basta
+para os cabeçalhos TCP usados na análise, mas deixa os registros TLS
+maiores incompletos. Além disso, as configurações sempre rodaram na mesma
+ordem dentro de cada cenário, então variações de carga da máquina ao longo
+da coleta podem ter afetado uma delas mais do que as outras. O experimento também manteve os certificados clássicos, então a resposta do
 servidor ficou bem abaixo da janela inicial de 14\,600~bytes, cenário que
 mudaria com certificados e assinaturas pós-quânticos. Por fim, com 100
 tentativas por cenário, as estimativas de cauda ainda têm incerteza
@@ -1199,16 +1232,21 @@ chaves pós-quânticas fazem a resposta do servidor passar de um para dois
 segmentos e que, no padrão do OpenSSL, o ClientHello também é dividido, e o
 experimento mostrou o que isso significa em uma rede degradada.
 
-Com 50~ms por sentido e sem perda, a maior diferença entre a mediana de
-uma configuração e a do X25519 foi de 1,6~ms. O efeito mais pronunciado
-apareceu entre as conexões lentas. Com 10\% de perda, 126 das 300 tentativas
-do padrão do OpenSSL foram lentas (42,0\%), frente a 77 de 300 no X25519
-(25,7\%). As capturas registraram a repetição de um pequeno segmento do
-ClientHello e a espera de aproximadamente um RTT entre dois segmentos da
-resposta após uma abertura TCP com retransmissão. Nessas condições, observar
-apenas a mediana esconderia o custo experimentado por essas conexões.
-A extensão desses resultados a outros clientes, certificados e redes requer
-novas medições.
+Sem perda, o custo de rede da troca de chaves pós-quântica foi desprezível,
+com uma diferença máxima de 1,6~ms (cerca de 1,5\%) na mediana em relação ao
+X25519. Com perda, a mediana continuou estável, mas a porcentagem de
+handshakes lentos aumentou de forma consistente com o número de segmentos de
+cada configuração, chegando a 42,0\% no padrão do OpenSSL com 10\% de perda,
+contra 25,7\% no X25519, o que mostra que olhar só para a mediana
+esconderia o custo sentido por essas conexões. Além do efeito previsto, o
+experimento mostrou que a perda do SYN prejudica muito mais as
+configurações pós-quânticas, porque a redução da janela inicial impede que
+as mensagens de dois segmentos sejam enviadas de uma só vez, e que o custo
+de cada recuperação depende de qual segmento se perde. O modo híbrido não
+teve custo de rede perceptível em relação ao ML-KEM puro, o que reforça seu
+uso como padrão. Como a rede foi emulada e o cliente foi um só, confirmar
+esses resultados em outros clientes, certificados e redes ainda exige novas
+medições.
 
 Como trabalhos futuros, seria interessante repetir o experimento com
 certificados e assinaturas pós-quânticos, como o ML-DSA, em que a resposta
