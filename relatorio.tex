@@ -66,19 +66,22 @@ Florianópolis\\
 O TLS (Transport Layer Security) é o protocolo que protege a maior parte
 das conexões na internet, como as do HTTPS. No TLS~1.3, cliente e servidor
 combinam a chave da sessão por meio de uma troca de chaves em curvas
-elípticas, em geral o X25519 (LANGLEY; HAMBURG; TURNER, 2016), e Shor
-(1997) mostrou que um computador quântico suficientemente grande seria
-capaz de quebrar essa troca de chaves, assim como o RSA.
+elípticas, em geral o X25519 (LANGLEY; HAMBURG; TURNER, 2016). O
+problema é que Shor (1997) mostrou que um computador quântico
+suficientemente grande seria capaz de quebrar essa troca de chaves, assim
+como o RSA.
 
-Esse computador ainda não existe, mas o risco já é atual, já que um
+Esse computador ainda não existe, mas o risco já é atual, porque um
 atacante pode gravar hoje o tráfego cifrado e decifrá-lo no futuro, quando
-tiver acesso a uma máquina quântica, ataque conhecido como harvest now,
-decrypt later (Figura~\ref{fig:hndl}). Mosca (2018) resume o problema
+tiver acesso a uma máquina quântica. Esse ataque é conhecido como harvest
+now, decrypt later, que em português seria algo como ``colha agora,
+decifre depois''. Mosca (2018) resume o problema
 observando que, se o tempo que um dado precisa ficar secreto somado ao
 tempo da migração for maior que o tempo até esse computador existir, o
 dado já está em risco.
 
-Por esse motivo, a migração já começou: em 2024 o NIST publicou o ML-KEM,
+Por esse motivo, a migração para algoritmos pós-quânticos já começou. Em
+2024, o NIST publicou o ML-KEM,
 seu padrão pós-quântico para troca de chaves (NIST, 2024), e hoje
 recomenda abandonar os algoritmos vulneráveis até 2035 (MOODY et al.,
 2026). No caso do TLS, o Chrome e o OpenSSL já usam por padrão uma troca
@@ -95,10 +98,12 @@ latência alta, cada pacote a mais representa mais uma chance de
 retransmissão e, consequentemente, de atraso no estabelecimento da
 conexão.
 
-O objetivo do trabalho é medir esse custo na rede, comparando o X25519,
-o X25519MLKEM768, o ML-KEM-768 puro e o padrão do OpenSSL, que envia as
-chaves híbrida e clássica juntas, em uma rede emulada com o tc netem, sob
-diferentes taxas de perda e atrasos. A Seção~\ref{sec:desenvolvimento}
+O objetivo do trabalho é medir esse custo na rede. Para isso, foram
+comparados o X25519, o X25519MLKEM768, o ML-KEM-768 puro e o padrão do
+OpenSSL, que envia as chaves híbrida e clássica juntas, sob diferentes
+taxas de perda e atrasos. A rede foi emulada com o tc netem, uma ferramenta
+do Linux que acrescenta atraso e perda de pacotes ao tráfego de uma
+interface de rede. A Seção~\ref{sec:desenvolvimento}
 apresenta a parte teórica e um mini-exemplo com uma captura real do
 handshake, a Seção~\ref{sec:experimento} descreve a implementação do
 experimento, a Seção~\ref{sec:resultados} apresenta os resultados, que são
@@ -117,17 +122,16 @@ estão disponíveis em \url{https://github.com/beatriz-repette/INE5429}.
 \subsection{Handshake do TLS 1.3}
 \label{sec:tls13}
 
-Como visto na introdução, o TLS cria um canal seguro sobre o TCP. Sua
-versão 1.3, hoje especificada pela RFC~9846 (RESCORLA,
-2026), que substituiu a RFC~8446 (RESCORLA, 2018) em julho de 2026, é
-dividida em duas partes: o handshake, em que cliente e servidor
-combinam os parâmetros da conexão, se autenticam e estabelecem um segredo
-compartilhado, e a camada de registro, que usa as chaves derivadas desse
-segredo para cifrar os dados da aplicação.
+O TLS funciona sobre o TCP e cria um canal seguro entre cliente e
+servidor. Sua versão 1.3, especificada pela RFC~9846 (RESCORLA, 2026), é
+dividida no handshake, em que cliente e servidor combinam os parâmetros da
+conexão, se autenticam e estabelecem um segredo compartilhado, e na camada
+de registro, que usa as chaves derivadas desse segredo para cifrar os dados
+da aplicação.
 
 Uma das principais mudanças do TLS~1.3 em relação às versões anteriores é
-que o handshake completo leva apenas uma ida e volta (1-RTT) entre cliente
-e servidor. Isso só é possível porque o cliente envia sua parte da troca de
+que o handshake completo leva apenas uma ida e volta entre cliente e servidor, ou 1-RTT, em que o
+RTT (round-trip time) é o tempo que um pacote leva para ir e voltar. Isso só é possível porque o cliente envia sua parte da troca de
 chaves já na primeira mensagem, o ClientHello, sem esperar o
 servidor dizer qual algoritmo prefere. Essa parte vai dentro de uma
 extensão chamada key\_share (RESCORLA, 2026, seção 4.3.8), e é nela que a chave pós-quântica entra, como mostra a
@@ -165,81 +169,52 @@ Figura~\ref{fig:handshake}.
 O servidor escolhe um dos algoritmos oferecidos pelo cliente e responde com
 a sua própria parte da troca no ServerHello. A partir daí, os dois
 lados calculam o mesmo segredo, que é usado para derivar as chaves da
-sessão (RESCORLA, 2026, seção 7.1). Todas as mensagens seguintes já vão
-cifradas: o servidor envia seu certificado, uma assinatura sobre o
+sessão (RESCORLA, 2026, seção 7.1), e todas as mensagens seguintes já vão
+cifradas. Nelas, o servidor envia seu certificado, uma assinatura sobre o
 handshake (CertificateVerify) e um código de autenticação de
-mensagem (Finished), e o cliente responde com o seu próprio
-Finished, já podendo enviar dados.
+mensagem (Finished), e o cliente responde com o seu próprio Finished, a
+partir do qual já pode enviar dados.
 
-Como o cliente precisa adivinhar qual algoritmo o servidor vai aceitar, ele
-pode errar. Nesse caso, o servidor responde com um
-HelloRetryRequest (RESCORLA, 2026, seção 4.2.4) e o cliente
+No TLS, cada algoritmo de troca de chaves é chamado de grupo, e o cliente
+precisa adivinhar qual grupo o servidor vai aceitar. Quando ele erra, o
+servidor responde com um HelloRetryRequest (RESCORLA, 2026, seção 4.2.4) e o cliente
 precisa recomeçar o handshake, o que custa uma ida e volta a mais (AHMAD;
 JAMAL; KRIVIT, 2026). Para evitar isso, o cliente pode enviar chaves de
 mais de um algoritmo no mesmo ClientHello, mas isso deixa a
-mensagem maior. O OpenSSL~3.5, por exemplo, envia por padrão duas chaves:
-uma híbrida pós-quântica e uma X25519 clássica (OPENSSL PROJECT, 2025).
+mensagem maior. O OpenSSL~3.5, por exemplo, envia por padrão duas chaves, uma híbrida pós-quântica e uma X25519 clássica (OPENSSL PROJECT, 2025).
 
 Outro ponto importante é que, no TLS~1.3, o sigilo e a autenticação vêm de
 lugares diferentes. O sigilo depende do segredo obtido na troca de chaves,
 enquanto a autenticação depende da assinatura do CertificateVerify
 e do Finished (RESCORLA, 2026, seções 4.5.2 e 4.5.3). Essa
-separação faz diferença diante de um computador quântico, como mostra a
-Figura~\ref{fig:hndl}: um atacante pode gravar o tráfego hoje e decifrá-lo
-no futuro, quando conseguir quebrar a troca de chaves (harvest now,
-decrypt later), mas, para falsificar a autenticação, ele precisaria do
+separação faz diferença diante de um computador quântico, porque um
+atacante pode gravar o tráfego hoje e decifrá-lo
+no futuro, quando conseguir quebrar a troca de chaves, mas, para falsificar a autenticação, ele precisaria do
 computador quântico durante o próprio handshake. Por isso, a migração para
 algoritmos pós-quânticos começou pela troca de chaves (ADRIAN et al.,
 2024), e este trabalho também mantém os certificados clássicos, variando
 apenas a troca.
 
-\begin{figure}[H]
-\centering
-\caption{Por que a troca de chaves precisa migrar antes da autenticação}
-\label{fig:hndl}
-\begin{tikzpicture}[>=Stealth, font=\small]
-  \draw[->, thick] (0,0) -- (12,0) node[right] {tempo};
-  \fill[classico] (1.5,0) circle (4pt);
-  \node[below=4pt] at (1.5,0) {hoje: handshake};
-  \fill[perda] (10,0) circle (4pt);
-  \node[below=6pt] at (10,0) {futuro: computador quântico};
-  \draw[->, thick, dashed, pq] (1.5,0.3) to[bend left=25] (10,0.3);
-  \node[pq] at (5.75,1.75) {troca de chaves: gravada hoje, decifrada no futuro};
-  \node[classico, align=center] at (1.5,-1.6) {autenticação: só pode ser\\falsificada neste momento};
-\end{tikzpicture}
-\fonte{Elaborado pelos autores.}
-\end{figure}
-
-Para o TLS, cada algoritmo de troca de chaves é um ``grupo'' negociado. No
-caso de um KEM, o key\_share do cliente leva a chave
-de encapsulamento e o do servidor leva o ciphertext. A RFC~9954
-descreve como combinar dois algoritmos numa troca híbrida (STEBILA;
-FLUHRER; GUERON, 2026), e a RFC~10024 define o grupo
-X25519MLKEM768 (KWIATKOWSKI et al., 2026): o cliente envia sua
-chave ML-KEM-768 seguida da sua chave X25519, o servidor responde com o
-ciphertext seguido da sua chave X25519, e os dois segredos de
-32~bytes são concatenados em um único segredo de 64~bytes. Esses tamanhos
-são o ponto de partida do problema discutido na Seção~\ref{sec:rede}.
-
 
 \subsection{ML-KEM como mecanismo de encapsulamento de chaves}
 \label{sec:mlkem}
 
-Esta seção segue o FIPS~203, o padrão que define o ML-KEM (NIST, 2024). Um
-KEM (Key Encapsulation Mechanism, ou mecanismo de encapsulamento de
-chaves) permite que duas partes combinem uma chave secreta usando
-criptografia de chave pública. Ele tem três algoritmos:
+O ML-KEM, definido pelo NIST no padrão FIPS~203 (NIST, 2024), é um KEM (Key
+Encapsulation Mechanism, ou mecanismo de encapsulamento de chaves), um tipo
+de esquema que permite que duas partes combinem uma chave secreta usando
+criptografia de chave pública. Todo KEM é formado por três algoritmos:
 \begin{itemize}
   \item $\mathsf{KeyGen}() \rightarrow (ek, dk)$: gera a chave pública
   $ek$ e a chave secreta $dk$;
   \item $\mathsf{Encaps}(ek) \rightarrow (K, c)$: com a chave pública,
-  gera uma chave compartilhada $K$ e um ciphertext $c$;
+  gera uma chave compartilhada $K$ e um ciphertext (texto cifrado) $c$;
   \item $\mathsf{Decaps}(dk, c) \rightarrow K$: com a chave secreta,
   recupera $K$ a partir de $c$.
 \end{itemize}
 
 No Diffie-Hellman, como no X25519, os dois lados fazem a mesma operação.
-No KEM, os papéis são diferentes (Figura~\ref{fig:kem}): o cliente gera o
+No KEM, por outro lado, os papéis são diferentes (Figura~\ref{fig:kem}). O
+cliente gera o
 par de chaves e envia $ek$ no ClientHello, o servidor executa o
 $\mathsf{Encaps}$ e devolve $c$ no ServerHello, e o cliente
 executa o $\mathsf{Decaps}$. No fim, os dois têm a mesma chave $K$, de
@@ -266,16 +241,17 @@ executa o $\mathsf{Decaps}$. No fim, os dois têm a mesma chave $K$, de
 \fonte{Elaborado pelos autores com base em NIST (2024) e Kwiatkowski et al. (2026).}
 \end{figure}
 
-\subsubsection*{O problema difícil: aprendizado com erros}
+
 
 A segurança do ML-KEM vem do problema Module-LWE (Module Learning With
-Errors), uma generalização do problema LWE (REGEV, 2009). A ideia do LWE parte de um sistema linear $t = As \bmod q$: com $A$ e
-$t$ públicos, seria fácil encontrar o segredo $s$ por eliminação de Gauss,
-mas o LWE soma a esse sistema um vetor $e$ de erros pequenos:
+Errors), uma generalização do problema LWE (REGEV, 2009). O LWE parte de um sistema
+linear $t = As \bmod q$, em que, com $A$ e $t$ públicos, seria fácil
+encontrar o segredo $s$ por eliminação de Gauss, e soma a esse sistema um
+vetor $e$ de erros pequenos:
 \begin{equation}
 t = A s + e \bmod q
 \end{equation}
-Esse ruído basta para tornar o problema difícil, e acredita-se que ele
+Esse ruído é suficiente para tornar o problema difícil, e acredita-se que ele
 continue difícil mesmo para computadores quânticos.
 
 No ML-KEM, os elementos de $A$, $s$ e $e$ são polinômios com 256
@@ -283,17 +259,18 @@ coeficientes módulo $q = 3329$. No ML-KEM-768, $A$ é uma matriz
 $3 \times 3$ desses polinômios, e $s$ e $e$ são vetores de 3 polinômios com
 coeficientes pequenos, entre $-2$ e $2$.
 
-\subsubsection*{Cifrar um bit com ruído}
 
-Por dentro, o ML-KEM usa um esquema de cifração chamado K-PKE. A chave
-pública é $(A, t)$, com $t = As + e$, e a chave secreta é $s$. Para cifrar
+
+Com base nesse problema, o ML-KEM usa internamente um esquema de cifração
+chamado K-PKE, em que a chave pública é $(A, t)$, com $t = As + e$, e a
+chave secreta é $s$. Para cifrar
 uma mensagem $m$, com um bit em cada coeficiente, sorteiam-se um vetor $y$
 e erros $e_1$ e $e_2$, todos pequenos, e calcula-se:
 \begin{align}
 u &= A^{T} y + e_1 \\
 v &= t^{T} y + e_2 + \left\lceil q/2 \right\rfloor \cdot m
 \end{align}
-O ciphertext é o par $(u, v)$. Quem tem $s$ decifra calculando:
+O ciphertext é o par $(u, v)$, e quem tem $s$ o decifra calculando
 \begin{equation}
 w = v - s^{T} u = \underbrace{e^{T} y + e_2 - s^{T} e_1}_{\text{ruído pequeno}} + \left\lceil q/2 \right\rfloor \cdot m
 \label{eq:ruido}
@@ -301,12 +278,12 @@ w = v - s^{T} u = \underbrace{e^{T} y + e_2 - s^{T} e_1}_{\text{ruído pequeno}}
 Como o termo $s^{T} A^{T} y$ aparece tanto em $t^{T} y$ quanto em
 $s^{T} u$, ele se cancela, e resta apenas um ruído pequeno somado à
 mensagem. Assim, $w$ fica perto de $0$ quando o bit é $0$ e perto de
-$\lceil q/2 \rfloor = 1665$ quando o bit é $1$, de modo que arredondar
-para o valor mais próximo recupera o bit, cancelamento que só quem conhece
-$s$ consegue fazer.
+$\lceil q/2 \rfloor = 1665$ quando o bit é $1$, e arredondar para o valor
+mais próximo recupera o bit. Esse cancelamento, porém, só pode ser feito
+por quem conhece $s$.
 
-O exemplo a seguir ilustra essa conta com números pequenos, usando
-$q = 3329$, mas com inteiros no lugar dos polinômios e dimensão 2:
+Essa conta pode ser acompanhada com números pequenos, mantendo $q = 3329$,
+mas com inteiros no lugar dos polinômios e dimensão 2:
 \begin{itemize}
   \item Chaves: $A = \begin{pmatrix} 1234 & 567 \\ 2890 & 41 \end{pmatrix}$,
   $s = (1, -2)$ e $e = (2, -1)$, então $t = As + e = (102,\ 2807)$;
@@ -316,14 +293,14 @@ $q = 3329$, mas com inteiros no lugar dos polinômios e dimensão 2:
   \equiv 1659 \pmod{3329}$.
 \end{itemize}
 Como 1659 está perto de 1665, o bit decifrado é $1$. A diferença de $-6$ é
-exatamente o ruído da Equação~\eqref{eq:ruido}:
+exatamente o ruído da Equação~\eqref{eq:ruido}, já que
 $e^{T} y + e_2 - s^{T} e_1 = -3 - 2 - 1 = -6$. A decifração só erraria com
 um ruído maior que $q/4 \approx 832$, e no ML-KEM-768 a probabilidade de
 falha é de $2^{-164{,}8}$ (NIST, 2024).
 
-\subsubsection*{Do K-PKE ao ML-KEM}
 
-O K-PKE sozinho não resiste a um atacante ativo, que envia ciphertexts
+
+O K-PKE sozinho, porém, não resiste a um atacante ativo, que envia ciphertexts
 adulterados e observa a reação do outro lado para aprender sobre a chave
 secreta. Por isso, o ML-KEM aplica ao K-PKE a transformação de
 Fujisaki-Okamoto, resumida na Figura~\ref{fig:algos}, em que
@@ -361,28 +338,29 @@ só é possível porque toda a aleatoriedade da cifração vem da própria
 mensagem $m$. Quando a comparação falha, em vez de sinalizar o erro, ele
 devolve uma chave pseudoaleatória, de modo que o atacante não aprende nada
 com o ciphertext adulterado, técnica conhecida como rejeição implícita. Com
-essa construção, considera-se que o ML-KEM atinge a segurança IND-CCA2,
-que cobre esse tipo de ataque.
+essa construção, considera-se que o ML-KEM atinge a segurança IND-CCA2, a noção de segurança
+contra atacantes que podem enviar ciphertexts escolhidos e observar o
+resultado, que cobre esse tipo de ataque.
 
-\subsubsection*{De onde vêm os 1184 e 1088 bytes}
 
-Os tamanhos que pesam na rede saem diretamente dessa estrutura, já que a
-chave pública $ek$ contém o vetor $t$, com 3 polinômios de 256 coeficientes de 12~bits cada,
+
+É dessa estrutura que saem os tamanhos que pesam na rede, já que a chave
+pública $ek$ contém o vetor $t$, com 3 polinômios de 256 coeficientes de 12~bits cada,
 mais uma semente de 32~bytes, a partir da qual se gera a matriz $A$:
 \begin{equation}
 |ek| = \frac{3 \times 256 \times 12}{8} + 32 = 1184 \text{ bytes}
 \end{equation}
 No ciphertext, o ML-KEM guarda menos bits por coeficiente para economizar
-espaço: 10~bits nos 3 polinômios de $u$ e 4~bits no polinômio $v$.
+espaço, com 10~bits nos 3 polinômios de $u$ e 4~bits no polinômio $v$, o
+que resulta em
 \begin{equation}
 |c| = \frac{3 \times 256 \times 10}{8} + \frac{256 \times 4}{8} = 1088 \text{ bytes}
 \end{equation}
 No X25519, por outro lado, cada lado envia só um ponto da curva, de
 32~bytes, e é a troca desse único número por vetores de polinômios que
-explica a diferença de tamanho. A Tabela~\ref{tab:params} mostra os três conjuntos de
-parâmetros do padrão, da menor categoria de segurança para a maior. O NIST
-recomenda o ML-KEM-768 como padrão, e é ele que o grupo
-X25519MLKEM768 usa.
+explica a diferença de tamanho. A Tabela~\ref{tab:params} mostra os três conjuntos de parâmetros do padrão,
+da menor categoria de segurança para a maior, dos quais o NIST recomenda o
+ML-KEM-768, que é o usado pelo grupo X25519MLKEM768.
 
 \begin{table}[H]
 \centering
@@ -405,22 +383,25 @@ ML-KEM-1024 & 4 & 1568 & 1568 & 5 \\
 \label{sec:hibrido}
 
 Mesmo resistindo a computadores quânticos, o ML-KEM não costuma ser usado
-sozinho porque ainda é um algoritmo recente: as curvas elípticas são
-estudadas há décadas, enquanto o ML-KEM só foi padronizado em 2024. Um
-exemplo desse risco é o SIKE, outro KEM pós-quântico, que chegou à quarta
+sozinho, porque ainda é um algoritmo recente, padronizado só em 2024,
+enquanto as curvas elípticas são estudadas há décadas. O risco de confiar
+apenas em um algoritmo novo ficou claro com o SIKE, outro KEM pós-quântico,
+que chegou à quarta
 rodada do processo do NIST em 2022 e, poucas semanas depois, teve seus
 parâmetros de nível~1 quebrados em cerca de uma hora, em um único núcleo
 de processador e sem computador quântico (CASTRYCK; DECRU, 2023). Embora
 nada indique que o mesmo vá acontecer com o ML-KEM, o caso ilustra por que
 se prefere combinar um algoritmo novo com outro já consolidado.
 
-O modo híbrido combina os dois algoritmos, de forma que a conexão continua
+O modo híbrido combina os dois algoritmos de forma que a conexão continua
 segura enquanto pelo menos um deles não for quebrado (STEBILA; FLUHRER;
-GUERON, 2026). O ML-KEM protege contra o computador quântico, e o X25519
-garante pelo menos a segurança que o TLS já tem hoje.
+GUERON, 2026), já que o ML-KEM protege contra o computador quântico e o
+X25519 garante pelo menos a segurança que o TLS já tem hoje.
 
-No grupo X25519MLKEM768, os dois segredos de 32~bytes são
-concatenados, e o resultado entra na derivação de chaves do TLS~1.3
+No grupo X25519MLKEM768, definido pela RFC~10024 (KWIATKOWSKI et al.,
+2026), o cliente envia sua chave ML-KEM-768 seguida da sua chave X25519, e
+o servidor responde com o ciphertext seguido da sua chave X25519. Os dois
+segredos de 32~bytes obtidos são concatenados, e o resultado entra na derivação de chaves do TLS~1.3
 (Figura~\ref{fig:hibrido}), que começa com a função HKDF-Extract (RESCORLA,
 2026, seção 7.1), de modo que, para prever as chaves, o atacante
 precisaria conhecer os dois segredos.
@@ -439,30 +420,28 @@ precisaria conhecer os dois segredos.
   \draw[->, thick, classico] (x) -- (cat);
   \draw[->, thick] (cat) -- (hkdf);
   \draw[->, thick] (hkdf) -- (chaves);
-  \node[gray, align=left, anchor=west] at (6.2,-2.8) {\footnotesize basta um dos dois segredos\\\footnotesize continuar desconhecido para\\\footnotesize as chaves serem imprevisíveis};
+  
 \end{tikzpicture}
 \fonte{Elaborado pelos autores com base em Kwiatkowski et al. (2026).}
 \end{figure}
 
-O custo do híbrido sobre o ML-KEM puro é pequeno: 32~bytes a mais em cada
-mensagem (Tabela~\ref{tab:tamanhos}) e uma operação de curva elíptica. Por
-isso, ele é o modo padrão do Chrome e do OpenSSL. Como o ML-KEM também pode
-ser usado sozinho (Seção~\ref{sec:mini}), o experimento compara as três
-formas. A expectativa é que o híbrido e o ML-KEM puro tenham desempenho de
-rede parecido, e que a diferença apareça em relação ao X25519, por causa
-dos mais de mil bytes que o ML-KEM acrescenta. A próxima seção explica por
-que esses bytes viram atraso.
+O custo do híbrido em relação ao ML-KEM puro é pequeno, de 32~bytes a mais
+em cada mensagem (Tabela~\ref{tab:tamanhos}) e uma operação de curva
+elíptica, e por isso ele é o modo padrão do Chrome e do OpenSSL. Como o
+ML-KEM também pode ser usado sozinho, o experimento compara o X25519, o
+híbrido e o ML-KEM puro, com a expectativa de que o híbrido e o ML-KEM puro
+tenham desempenho de rede parecido e que a diferença apareça em relação ao
+X25519, por causa dos mais de mil bytes que o ML-KEM acrescenta.
 
 
 \subsection{Tamanho de chave como problema de rede}
 \label{sec:rede}
 
 O ML-KEM é rápido de calcular, e por isso seu custo no TLS não está no
-processamento, mas no tamanho das mensagens (RISTIC, 2026). Para entender
-por que alguns bytes a mais viram atraso, é preciso olhar para como o
-handshake é transportado pela rede.
+processamento, mas no tamanho das mensagens (RISTIC, 2026), que muda a
+forma como o handshake é transportado pela rede.
 
-\subsubsection*{Quanto cabe em um pacote}
+
 
 Em uma rede Ethernet, cada pacote pode ter até 1500~bytes, valor chamado de
 MTU (Maximum Transmission Unit). Desse total, 20~bytes vão para o
@@ -489,17 +468,19 @@ segmento. Por isso, o termo mais correto aqui é segmentação, e não
 fragmentação, que é o que acontece na camada IP e que o TCP
 procura evitar ao respeitar o MSS.
 
-\subsubsection*{De um para dois segmentos}
 
-Com X25519, a chave do cliente tem só 32~bytes (LANGLEY; HAMBURG; TURNER,
-2016), e o ClientHello inteiro cabe com folga em um segmento. Com
-X25519MLKEM768, ela passa a ter 1216~bytes (KWIATKOWSKI et al.,
-2026), o que sozinho ainda cabe, mas somado ao resto da mensagem pode
-passar do limite, dependendo de quantas outras extensões o cliente envia. Ristic (2026) observou um ClientHello de 2117~bytes no
-Chrome, que precisa então de dois segmentos (Figura~\ref{fig:barras}). A
-equipe do Chrome relatou, na implantação anterior com Kyber, aumento de
-4\% na mediana da latência dos handshakes em desktop e atribuiu esse efeito
-à divisão do ClientHello em dois pacotes (ADRIAN et al., 2024).
+
+No X25519, a chave do cliente tem só 32~bytes (LANGLEY; HAMBURG; TURNER,
+2016), e o ClientHello inteiro cabe com folga em um segmento. No
+X25519MLKEM768, essa chave passa a ter 1216~bytes (KWIATKOWSKI et al.,
+2026), que ainda cabem em um segmento, mas deixam pouco espaço para o resto
+da mensagem, de modo que o ClientHello passa ou não do limite conforme as
+outras extensões que cada cliente envia (Figura~\ref{fig:barras}). No
+Chrome, que envia muitas extensões, Ristic (2026) observou um ClientHello
+de 2117~bytes, que ocupa dois segmentos, e a própria equipe do navegador
+atribuiu a essa divisão um aumento de 4\% na mediana da latência dos
+handshakes em desktop, medido ainda na implantação anterior, com o Kyber
+(ADRIAN et al., 2024).
 
 \begin{figure}[H]
 \centering
@@ -525,13 +506,12 @@ equipe do Chrome relatou, na implantação anterior com Kyber, aumento de
 \fonte{Elaborado pelos autores com dados de Langley, Hamburg e Turner (2016), Kwiatkowski et al. (2026) e Ristic (2026).}
 \end{figure}
 
-A passagem de um para dois segmentos tem três consequências para o
-handshake, discutidas a seguir.
 
-\subsubsection*{1. Mais segmentos, mais chance de perda}
-Se cada segmento é perdido de forma independente com probabilidade $p$
-(que é o modelo de perda do tc netem, usado no
-experimento), a chance de perder pelo menos um entre $n$ segmentos é:
+
+A primeira consequência dessa divisão é que, se cada segmento é perdido de
+forma independente com probabilidade $p$, que é o modelo de perda do tc
+netem usado no experimento, a chance de perder pelo menos um entre $n$
+segmentos cresce com $n$:
 \begin{equation}
 P(\text{perda}) = 1 - (1-p)^n
 \label{eq:perda}
@@ -558,17 +538,20 @@ Perda por segmento ($p$) & $n=1$ & $n=2$ & $n=3$ \\
 \fonte{Elaborado pelos autores.}
 \end{table}
 
-\subsubsection*{2. Uma perda no handshake custa caro}
-Em uma transferência longa, o TCP recupera uma perda rapidamente: os
-segmentos que chegam depois do perdido fazem o receptor enviar ACKs
-duplicados, e ao receber três deles o emissor retransmite o segmento
+Além de mais provável, uma perda no handshake também é mais demorada de
+recuperar. Em uma
+transferência longa, o TCP recupera uma perda rapidamente, porque
+os segmentos que chegam depois do perdido fazem o receptor enviar
+confirmações (ACKs) duplicadas, e, ao receber três delas, o emissor
+retransmite o segmento
 (ALLMAN; PAXSON; BLANTON, 2009, seção 3.2). No handshake, porém, cada lado
 envia poucos segmentos e fica esperando a resposta, então, se o último
 segmento se perde, não há nada depois dele para gerar esses ACKs
-(Figura~\ref{fig:cauda}). Nesse caso, só um temporizador recupera a perda
-(CHENG et al., 2021, seções 1.2 e 3.2): o RTO, cujo valor inicial
-recomendado é de 1~segundo (PAXSON et al., 2011, seção 2.1), ou, em pilhas
-mais modernas como a do Linux, a sonda TLP, que é enviada depois de cerca
+(Figura~\ref{fig:cauda}). Nesse caso, a perda só é recuperada por um temporizador (CHENG et al.,
+2021, seções 1.2 e 3.2), que pode ser o RTO (Retransmission Timeout), cujo
+valor inicial recomendado é de 1~segundo (PAXSON et al., 2011, seção 2.1),
+ou, em pilhas mais modernas como a do Linux, a sonda TLP (Tail Loss Probe),
+enviada depois de cerca
 de duas vezes o RTT (CHENG et al., 2021, seção 7.2).
 
 \begin{figure}[H]
@@ -594,8 +577,8 @@ de duas vezes o RTT (CHENG et al., 2021, seção 7.2).
 
 Para ter uma ideia do custo, considere uma rede com RTT de 50~ms. Sem
 perdas, a aplicação começa a enviar dados depois de 2~RTTs, um para o
-handshake do TCP e outro para o do TLS (KAMPANAKIS; CHILDS-KLEIN, 2024), ou
-seja, cerca de 100~ms. Se o segundo segmento do ClientHello se
+handshake do TCP e outro para o do TLS (KAMPANAKIS; CHILDS-KLEIN, 2024), o
+que dá cerca de 100~ms. Se o segundo segmento do ClientHello se
 perde, a TLP acrescenta cerca de mais 100~ms, dobrando o tempo, e, se a
 recuperação depender do RTO, o handshake passa de 1~segundo. Em uma
 estimativa simplificada, multiplicando a chance de perda pelo custo da
@@ -605,11 +588,11 @@ $0{,}0975 \times 100 \approx 9{,}8$~ms no híbrido. Essa média, porém, não mo
 piores, já que poucas conexões perdem um segmento, mas cada uma delas fica
 muito mais lenta.
 
-\subsubsection*{3. A janela inicial do TCP}
-Logo depois de abrir a conexão, o TCP só pode enviar um número limitado de
-segmentos antes de receber o primeiro ACK. A RFC~6928 recomenda uma janela
-inicial de até 10~segmentos, limitada a 14\,600~bytes (CHU et al., 2013,
-seção 2), ou seja, $10 \times 1460 = 14\,600$~bytes. Se a resposta do
+Por fim, logo depois de abrir a conexão, o TCP só pode enviar um número
+limitado de segmentos antes de receber o primeiro ACK, a chamada janela
+inicial, para a qual a RFC~6928 recomenda até 10~segmentos, com limite de
+14\,600~bytes, que é o espaço de 10 segmentos de 1460~bytes (CHU et al.,
+2013, seção 2). Se a resposta do
 servidor (do ServerHello até o Finished, incluindo os
 certificados) passar desse valor, ele precisa esperar um ACK antes de
 continuar, o que acrescenta um RTT inteiro (RISTIC, 2026). A chave
@@ -618,13 +601,11 @@ normalmente ainda cabe. Esse limite se torna o principal problema quando a
 autenticação também migrar, já que assinaturas e chaves pós-quânticas nos
 certificados são várias vezes maiores.
 
-\subsubsection*{O problema na prática}
-
-Embora o TLS sempre tenha permitido um ClientHello dividido em
-mais de um segmento, muitos servidores e equipamentos de rede assumiam que
-a mensagem chegaria inteira em uma única leitura. Com o
-ClientHello pós-quântico, esse erro antigo passou a aparecer com
-frequência: em vez de recusar o grupo desconhecido e usar o X25519, esses
+Fora o atraso, o ClientHello maior também já causou problemas reais de
+compatibilidade, porque, embora o TLS sempre tenha permitido um ClientHello
+dividido em mais de um segmento, muitos servidores e equipamentos de rede
+assumiam que a mensagem chegaria inteira em uma única leitura. Com o
+ClientHello pós-quântico, esse erro antigo passou a aparecer com frequência, e, em vez de recusar o grupo desconhecido e usar o X25519, esses
 servidores simplesmente derrubam a conexão (TLDR.FAIL, [s.d.]). A
 Cloudflare relata que, em um estudo anterior, cerca de 0,34\% dos
 servidores de origem examinados não completaram o handshake ao receber
@@ -640,7 +621,7 @@ estáveis, o impacto no tempo total da conexão é menor do que no handshake e
 diminui conforme mais dados são transferidos, mas que conexões em redes
 com perda ou instáveis podem sofrer um impacto maior.
 
-\subsubsection*{Hipótese}
+
 
 A partir dessa análise, a hipótese a ser testada no experimento é que,
 sem perda, a diferença entre X25519 e X25519MLKEM768 deve ser
@@ -649,7 +630,7 @@ perda aumenta, as mensagens que passam a ocupar dois segmentos devem
 aumentar a chance de uma perda no handshake e, com ela, os casos mais lentos da
 distribuição, por causa das recuperações por temporizador. Por isso, além
 da média, o experimento também deve observar a mediana e os percentis mais
-altos (como o p95).
+altos, como o p95, que é o valor abaixo do qual ficam 95\% das medidas.
 
 
 \subsection{Mini-exemplo}
@@ -685,8 +666,9 @@ versão, números aleatórios, lista de cifras e outras extensões.
 
 Para confirmar isso na prática, foram capturados handshakes TLS~1.3 entre
 um cliente e um servidor OpenSSL~3.5, que já suporta ML-KEM sem precisar
-de bibliotecas externas (OPENSSL PROJECT, 2025), rodando em dois
-containers ligados por uma rede com MTU de 1500~bytes. O servidor usa um
+de bibliotecas externas (OPENSSL PROJECT, 2025), rodando em dois containers Docker, que são ambientes isolados que
+compartilham o sistema operacional da máquina, ligados por uma rede com MTU
+de 1500~bytes. O servidor usa um
 certificado ECDSA clássico, já que só a troca de chaves varia. Como o
 OpenSSL~3.5 envia por padrão as chaves híbrida e X25519 juntas, o grupo
 foi fixado à mão em cada captura, para que as configurações não se
@@ -713,25 +695,21 @@ Padrão OpenSSL (2 chaves) & 1451 & 2 & 1215 & 1841 / 2 \\
 \end{table}
 
 O primeiro resultado é que os key\_share medidos batem exatamente
-com a Tabela~\ref{tab:tamanhos}: 32 e 32~bytes no X25519, 1216 e
+com a Tabela~\ref{tab:tamanhos}, com 32 e 32~bytes no X25519, 1216 e
 1120~bytes no híbrido e 1184 e 1088~bytes no ML-KEM-768 puro. O segundo resultado é que, com o grupo híbrido sozinho, o
 ClientHello do OpenSSL tem 1393~bytes e ainda cabe em um
 segmento, por ser bem mais enxuto que o do Chrome (2117~bytes), que
 carrega mais extensões. Quem passa para dois segmentos é o padrão do
-OpenSSL, que envia as duas chaves: a segunda entrada do
-key\_share acrescenta 36~bytes (32 da chave e 4 de cabeçalho), a
-lista de grupos suportados acrescenta mais 14, e outras pequenas
-diferenças completam os 58~bytes a mais em relação ao híbrido sozinho,
-levando a mensagem a 1451~bytes.
+OpenSSL, porque a segunda chave e as extensões que a acompanham acrescentam
+58~bytes ao ClientHello, que chega a 1451~bytes.
 
 Esses 1451~bytes ficam abaixo dos 1460 do MSS calculado na
 Seção~\ref{sec:rede}, e mesmo assim a mensagem foi dividida. Isso acontece
-porque o Linux ativa os timestamps do TCP por padrão: o SYN anuncia um MSS
-de 1460, mas cada segmento perde 12~bytes para a opção de timestamps,
+porque o Linux ativa os timestamps do TCP por padrão. O SYN, primeiro
+pacote da abertura da conexão TCP, anuncia um MSS de 1460, mas cada segmento perde 12~bytes para a opção de timestamps,
 sobrando 1448. O ClientHello foi então enviado como um segmento
-de 1448~bytes seguido de outro com apenas 3, o que mostra como o limite é
-estreito: com o híbrido sozinho, sobravam só 55~bytes. A
-Figura~\ref{fig:captura} mostra esse caso no Wireshark: a linha
+de 1448~bytes seguido de outro com apenas 3, o que mostra como o limite é estreito, já que, com o híbrido sozinho,
+sobravam só 55~bytes. Na Figura~\ref{fig:captura}, que mostra esse caso no Wireshark, a linha
 ``2 Reassembled TCP Segments'' indica que o ClientHello chegou
 em dois pedaços, e a extensão key\_share traz as duas chaves, de
 1216 e 32~bytes. A versão do Wireshark usada ainda não conhece o nome do
@@ -748,17 +726,16 @@ X25519MLKEM768 (0x11EC) (KWIATKOWSKI et al., 2026).
 
 Do lado do servidor, a resposta (do ServerHello ao
 Finished) passou de 764~bytes em um segmento no X25519 para cerca
-de 1840~bytes em dois segmentos nos grupos pós-quânticos, o que significa que a
-resposta do servidor também cruzou o limite de um segmento, inclusive no
-híbrido sozinho. Mesmo assim, ela ocupa só cerca de 12,6\% da janela
+de 1840~bytes em dois segmentos nos grupos pós-quânticos, de modo que ela
+também cruzou o limite de um segmento, inclusive no híbrido sozinho. Mesmo assim, ela ocupa só cerca de 12,6\% da janela
 inicial de 14\,600~bytes e não precisa esperar nenhum ACK. Como os
 certificados continuam clássicos, a janela inicial ainda não é um
 problema, como previsto na Seção~\ref{sec:rede}.
 
 Esses resultados ligam a teoria ao experimento, já que a passagem de um
 para dois segmentos é a mudança que os testes da Seção~\ref{sec:experimento} combinam com diferentes
-taxas de perda. Essa passagem, porém, não acontece no mesmo lugar em todas
-as configurações: nos três grupos fixados do experimento, só a resposta do
+taxas de perda. Essa passagem, porém, não acontece no mesmo lugar em todas as configurações, já que, nos três
+grupos fixados do experimento, só a resposta do
 servidor é dividida, enquanto no padrão do OpenSSL, com duas chaves, o
 ClientHello também é.
 
@@ -775,27 +752,22 @@ O experimento avaliou o efeito da troca de chaves no tempo do handshake
 TLS~1.3 sob condições controladas de atraso e perda de pacotes. Foram
 comparadas quatro configurações: o X25519 (clássico), o X25519MLKEM768
 (híbrido), o MLKEM768 (pós-quântico puro) e o padrão do OpenSSL~3.5, em que o
-cliente envia as chaves X25519MLKEM768 e X25519 juntas. Essa quarta
-configuração não estava no planejamento e foi incluída por causa do
-mini-exemplo da Seção~\ref{sec:mini}, que mostrou que ela é a única em que o
-ClientHello ocupa dois segmentos. As medições e as capturas estão na pasta
-\nolinkurl{experimento/resultados} do repositório, na
-\href{https://github.com/beatriz-repette/INE5429/tree/2937eab85f46be9bb8c3c445aecea49ff93a9fde/experimento/resultados}{versão identificada pelo commit 2937eab},
-e a pasta \nolinkurl{resultados_30rep} guarda a coleta preliminar.
+cliente envia as chaves X25519MLKEM768 e X25519 juntas. A quarta configuração foi incluída porque, como mostrou o mini-exemplo da
+Seção~\ref{sec:mini}, ela é a única em que o ClientHello ocupa dois
+segmentos. As medições e as capturas estão na pasta
+\nolinkurl{experimento/resultados} do repositório.
 
 \subsection{Ambiente e topologia}
 \label{subsec:ambiente}
 
-A coleta de 24 de novembro de 2026 usou Linux 7.0.0-43-generic e três containers Docker:
-um cliente, um servidor e um roteador entre os dois, ligados por duas redes
-virtuais com MTU de 1500~bytes (Figura~\ref{fig:topologia-experimento}). No
-planejamento, as regras de emulação seriam aplicadas diretamente nas
-interfaces do cliente e do servidor, mas, durante a implementação,
-percebeu-se que, nesse caso, a captura só registraria os pacotes que
-sobreviveram à perda. Com um roteador no meio, o tc netem passou a ser
-aplicado na saída das duas interfaces do roteador, atrasando e descartando
-pacotes nos dois sentidos, enquanto o tcpdump captura os pacotes que chegam
-a ele, antes da perda. Assim, os segmentos descartados pela rede emulada
+O experimento foi executado em uma máquina com Linux 7.0.0-43-generic, usando três containers Docker (um cliente, um
+servidor e um roteador entre os dois) ligados por duas redes virtuais com MTU de 1500~bytes (Figura~\ref{fig:topologia-experimento}). O roteador foi colocado no meio porque, se as regras de emulação fossem
+aplicadas diretamente nas interfaces do cliente e do servidor, a captura só
+registraria os pacotes que sobreviveram à perda. Assim, o tc netem é
+aplicado na saída das suas duas interfaces, atrasando e
+descartando pacotes nos dois sentidos, enquanto o tcpdump, programa que
+grava os pacotes de uma interface, captura no roteador os pacotes que
+chegam a ele, antes da perda. Assim, os segmentos descartados pela rede emulada
 também aparecem nas capturas, o que permite identificar as retransmissões
 de cada conexão.
 
@@ -818,10 +790,10 @@ de cada conexão.
 \fonte{Elaborado pelos autores.}
 \end{figure}
 
-A Tabela~\ref{tab:ferramentas-experimento} resume as ferramentas usadas. O
-OpenSSL~3.5.9, da distribuição Alpine~3.22, oferece os grupos avaliados
-de forma nativa, então o oqs-provider, previsto
-na proposta inicial, não foi necessário. O servidor é o próprio
+Entre as ferramentas usadas, resumidas na
+Tabela~\ref{tab:ferramentas-experimento}, está o OpenSSL~3.5.9, da
+distribuição Alpine~3.22, que já oferece os grupos avaliados de forma
+nativa. O servidor é o próprio
 openssl s\_server, com um certificado ECDSA P-256 clássico e configurado
 para aceitar os grupos X25519MLKEM768, MLKEM768 e X25519, nessa ordem de
 preferência.
@@ -847,17 +819,19 @@ Python (pandas e matplotlib) & Automação da matriz, estatísticas e gráficos.
 \fonte{Elaborado pelos autores.}
 \end{table}
 
-Alguns cuidados foram necessários para que as medidas refletissem o
-comportamento real da rede. Primeiro, as otimizações de segmentação das
+Para que as medidas refletissem o comportamento de uma rede real, o ambiente
+foi ajustado de forma a evitar que o kernel agrupasse segmentos, que uma
+conexão influenciasse a seguinte e que o handshake fosse abreviado pela
+retomada de sessões. Primeiro, as otimizações de segmentação das
 placas virtuais (TSO, GSO e GRO) foram desligadas em todas as interfaces,
 porque, com elas ativas, o kernel junta vários segmentos em um único pacote
 maior que o MTU, e o netem descartaria esses segmentos de uma só vez, o que
 não aconteceria em uma rede real. Segundo, o cliente e o servidor foram
 configurados com tcp\_no\_metrics\_save, para que o kernel não
 reaproveitasse o RTT e o temporizador de retransmissão medidos em conexões
-anteriores, reduzindo a influência de uma conexão sobre a seguinte. Por fim, o servidor não
-emite session tickets e o cliente não guarda sessões, de modo que toda
-tentativa é um handshake completo, sem retomada.
+anteriores, reduzindo a influência de uma conexão sobre a seguinte. Por fim, o servidor não emite session tickets, que permitiriam retomar uma
+sessão anterior sem um handshake completo, e o cliente não guarda sessões,
+de modo que toda tentativa é um handshake completo.
 
 \subsection{Medição}
 \label{subsec:medicao}
@@ -866,12 +840,11 @@ Para medir o tempo do handshake sem incluir o custo de iniciar um programa
 a cada tentativa, foi escrito um cliente em C que usa a libssl do OpenSSL e
 faz todas as tentativas de um cenário em sequência, abrindo uma nova
 conexão a cada uma. O cronômetro começa imediatamente antes do
-connect(), e o programa registra dois intervalos separados: o
-handshake TCP, até o connect() retornar, e o handshake TLS, do fim
-do connect() até o SSL\_connect() retornar, o que acontece
+connect(), e o programa registra separadamente o tempo do handshake TCP, até o
+connect() retornar, e o do handshake TLS, do fim do connect() até o SSL\_connect() retornar, o que acontece
 quando o cliente recebe o Finished do servidor e envia o seu.
 
-Essa separação é importante para a análise. A perda de um SYN atrasa a
+Essa separação é importante para a análise porque a perda de um SYN atrasa a
 conexão em pelo menos um segundo, pelo temporizador inicial do TCP
 (PAXSON et al., 2011), e esse atraso não depende do grupo escolhido, já que
 o SYN não carrega nenhum dado do TLS. Por isso, a métrica principal deste
@@ -885,8 +858,8 @@ retorna sem erro. Como o certificado do servidor é autoassinado, o cliente
 não valida a cadeia de certificados nem o nome do servidor, então os tempos
 medidos não incluem essa verificação.
 
-As métricas coletadas estão na Tabela~\ref{tab:metricas-experimento}. As
-três primeiras vêm do cliente, e as demais foram extraídas das capturas com
+As métricas coletadas estão na Tabela~\ref{tab:metricas-experimento}, em
+que as três primeiras vêm do cliente e as demais foram extraídas das capturas com
 o tshark, associando cada conexão à porta de origem do cliente.
 
 \begin{table}[H]
@@ -916,13 +889,9 @@ A matriz combinou as quatro configurações com quatro taxas de perda e três
 valores de atraso, aplicados por sentido (Tabela~\ref{tab:matriz-experimento}).
 Um atraso de 50~ms em cada sentido corresponde a um RTT de cerca de
 100~ms, e a perda segue o modelo do netem, em que cada pacote é descartado
-de forma independente com a probabilidade configurada. O planejamento
-previa 30 tentativas por cenário, mas uma primeira coleta completa com esse
-número mostrou estimativas muito instáveis para as caudas da distribuição,
-já que o p95 de 30 tentativas depende só das duas mais lentas. Por isso, a
-coleta usada neste relatório tem 100 tentativas por cenário, o que dá
-$4 \times 4 \times 3 = 48$ cenários e 4800 handshakes, executados em cerca
-de 90 minutos.
+de forma independente com a probabilidade configurada. Cada um dos 48 cenários teve 100 tentativas, somando 4800 handshakes,
+número escolhido depois que uma primeira coleta com 30 tentativas mostrou
+estimativas instáveis para os casos mais lentos.
 
 \begin{table}[H]
 \centering
@@ -959,23 +928,23 @@ mostra o procedimento implementado no script executar.py.
 \ttfamily
 \begin{tabbing}
 xx\=xx\=xx\=xx\=\kill
-CONFIGURACOES $\leftarrow$ [X25519, X25519MLKEM768, MLKEM768, padrao]\\
+CONFIGURAÇÕES $\leftarrow$ [X25519, X25519MLKEM768, MLKEM768, padrão]\\
 PERDAS $\leftarrow$ [0, 1, 5, 10]\%;\ ATRASOS $\leftarrow$ [10, 50, 150] ms\\
-REPETICOES $\leftarrow$ 100;\ LIMITE $\leftarrow$ 10 s\\[3pt]
+REPETIÇÕES $\leftarrow$ 100;\ LIMITE $\leftarrow$ 10 s\\[3pt]
 Criar redes e containers (cliente, roteador, servidor)\\
-Desligar TSO/GSO/GRO; desligar cache de metricas TCP\\
+Desligar TSO/GSO/GRO; desligar cache de métricas TCP\\
 para cada perda em PERDAS:\\
 \> para cada atraso em ATRASOS:\\
-\>\> para cada configuracao em CONFIGURACOES:\\
-\>\>\> Aplicar netem (atraso, perda) nas duas saidas do roteador\\
+\>\> para cada configuração em CONFIGURAÇÕES:\\
+\>\>\> Aplicar netem (atraso, perda) nas duas saídas do roteador\\
 \>\>\> Iniciar tcpdump no roteador (pacotes que chegam)\\
-\>\>\> para repeticao $\leftarrow$ 1 ate REPETICOES:\\
-\>\>\>\> t0 $\leftarrow$ relogio(); connect(); t1 $\leftarrow$ relogio()\\
-\>\>\>\> SSL\_connect(); t2 $\leftarrow$ relogio()\\
+\>\>\> para repetição $\leftarrow$ 1 até REPETIÇÕES:\\
+\>\>\>\> t0 $\leftarrow$ relógio(); connect(); t1 $\leftarrow$ relógio()\\
+\>\>\>\> SSL\_connect(); t2 $\leftarrow$ relógio()\\
 \>\>\>\> Registrar t1 $-$ t0, t2 $-$ t1, sucesso ou falha, porta\\
 \>\>\> Parar tcpdump; remover netem (mesmo se falhar)\\[3pt]
-Extrair segmentos, bytes e retransmissoes das capturas (tshark)\\
-Calcular estatisticas por cenario e gerar graficos
+Extrair segmentos, bytes e retransmissões das capturas (tshark)\\
+Calcular estatísticas por cenário e gerar gráficos
 \end{tabbing}
 \end{minipage}
 \fonte{Elaborado pelos autores.}
@@ -987,44 +956,44 @@ tentativas concluídas, além da porcentagem de conexões com pelo menos uma
 retransmissão. Como discutido na Seção~\ref{sec:rede}, a média esconde os
 casos lentos, e mesmo o p95 de 100 tentativas depende de apenas cinco
 delas. Por isso, a análise principal usa uma medida mais estável, a
-porcentagem de handshakes lentos. Uma conexão concluída é classificada como lenta
-quando sua duração TLS excede a mediana sem perda do mesmo grupo e atraso,
-acrescida do atraso por sentido e de 5~ms. Falhas também entram no numerador.
-Esse limiar descreve o desempenho. As retransmissões são identificadas separadamente
-nas capturas. Para essa medida, os três atrasos de uma
-mesma configuração e taxa de perda foram agrupados, somando 300
-tentativas, e o intervalo de confiança de 95\% foi calculado pelo método
-de Wilson.
+porcentagem de handshakes lentos. Uma conexão é considerada lenta quando o
+tempo do seu handshake TLS passa da mediana sem perda da mesma configuração
+e do mesmo atraso, somada ao atraso por sentido (meio RTT) e a uma folga de
+5~ms. Como uma recuperação de perda costuma custar pelo menos um RTT, esse
+limiar separa as conexões que precisaram se recuperar das que não
+precisaram, e a única tentativa que falhou também foi contada como lenta.
+Para essa medida, os três atrasos de uma mesma configuração e taxa de perda
+foram agrupados, somando 300 tentativas, e o intervalo de confiança de 95\%
+foi calculado pelo método de Wilson, indicado para proporções.
 
 
 \section{Resultados}
 \label{sec:resultados}
 
-Das 4800 tentativas, 4799 concluíram o handshake. A única falha ocorreu com
-o MLKEM768, com 5\% de perda e atraso de 150~ms (repetição 89, porta 47956
-do cliente), em que o cliente encerrou a conexão com erro de TLS cerca de
+Das 4800 tentativas, 4799 concluíram o handshake, e a única falha ocorreu
+com o MLKEM768, com 5\% de perda e atraso de 150~ms, em que o cliente encerrou a conexão com erro de TLS cerca de
 1,4~segundo após o início da tentativa, bem antes do limite de 10~segundos.
-A captura dessa conexão não permitiu identificar a causa com segurança, e
-os detalhes estão no repositório. Essa tentativa foi contada como lenta e
-ficou fora das estatísticas de duração.
+Como a captura dessa conexão não permitiu identificar a causa com segurança,
+a tentativa foi contada como lenta e deixada fora das estatísticas de
+duração.
 
 As capturas confirmaram a estrutura de segmentos observada no mini-exemplo.
 Em todas as conexões concluídas, o ClientHello ocupou um segmento no
 X25519, no X25519MLKEM768 e no MLKEM768, e dois no padrão do OpenSSL,
 enquanto a primeira resposta do servidor ocupou um segmento no X25519 e
-dois nas três configurações pós-quânticas. Somando o ClientHello e a
-resposta do servidor, cada handshake depende, portanto, de 2, 3, 3 e 4
-segmentos de dados, respectivamente.
+dois nas três configurações pós-quânticas. Somando as duas mensagens, o handshake do X25519 depende de 2 segmentos de
+dados, o do X25519MLKEM768 e o do MLKEM768, de 3 cada um, e o do padrão do
+OpenSSL, de 4.
 
 \subsection{Sem perda de pacotes}
 
-Sem perda, as quatro configurações tiveram praticamente o mesmo
-desempenho. Com atraso de 50~ms por sentido, a mediana do handshake TLS
-foi de 104,8~ms no X25519, 106,3~ms no X25519MLKEM768, 105,2~ms no MLKEM768
-e 106,4~ms no padrão do OpenSSL, o que corresponde a um RTT de 100~ms mais
+Sem perda, as quatro configurações tiveram praticamente o mesmo desempenho.
+Com atraso de 50~ms por sentido, por exemplo, a mediana do handshake TLS foi
+de 104,8~ms no X25519, 106,3~ms no X25519MLKEM768, 105,2~ms no MLKEM768 e
+106,4~ms no padrão do OpenSSL, valores que correspondem a um RTT de 100~ms mais
 poucos milissegundos de processamento. A maior diferença em relação ao
-X25519 foi de 1,6~ms, cerca de 1,5\%, e o mesmo padrão se repetiu com 10 e
-150~ms de atraso. Nenhuma conexão sem perda foi classificada como lenta.
+X25519 foi de 1,6~ms, cerca de 1,5\%, e o mesmo padrão se repetiu com 10 e 150~ms de atraso, sem nenhuma conexão
+classificada como lenta.
 
 \subsection{Com perda de pacotes}
 
@@ -1032,11 +1001,11 @@ Com perda, a mediana continuou praticamente igual à do cenário sem perda
 em todas as configurações, porque a maior parte das conexões não perdeu
 nenhum segmento do handshake. Mesmo com 10\% de perda e atraso de 50~ms, as
 medianas ficaram entre 105,3 e 106,8~ms. O efeito da perda apareceu nas
-conexões que precisaram se recuperar, como mostra a
-Figura~\ref{fig:cdf}, em que cada curva sobe rapidamente até cerca de
+conexões que precisaram se recuperar, como mostra a distribuição acumulada
+da Figura~\ref{fig:cdf}, em que cada curva sobe rapidamente até cerca de
 60--75\% das conexões e depois forma degraus, que correspondem aos tempos
 de recuperação. A Figura~\ref{fig:percentis} mostra a mesma diferença
-separando os três atrasos: com 50~ms por sentido e 10\% de perda, o X25519
+separando os três atrasos. Com 50~ms por sentido e 10\% de perda, o X25519
 e o X25519MLKEM768 tiveram medianas de 105,4 e 106,5~ms, mas seus
 percentis 95 chegaram a 717,5 e 823,5~ms.
 
@@ -1102,18 +1071,18 @@ Perda & Configuração & Lentos (\%) [IC 95\%] & Previsto (\%) & Extra médio (m
 \fonte{Elaborado pelos autores.}
 \end{figure}
 
-O custo médio acompanha essa porcentagem. Com 10\% de perda, o handshake
+O custo médio acompanhou essa porcentagem, e, com 10\% de perda, o handshake
 TLS do X25519 levou, em média, 144,7~ms a mais do que sem perda, enquanto o
 do X25519MLKEM768 levou 235,5~ms a mais, cerca de 63\% de acréscimo sobre o
 clássico, e o do padrão do OpenSSL, 286,7~ms. O custo de cada recuperação,
-por outro lado, dependeu mais do atraso da rede do que da configuração: a
+por outro lado, dependeu mais do atraso da rede do que da configuração, e a
 mediana do tempo extra dos handshakes lentos foi de 227~ms com atraso de
 10~ms, de 308~ms com 50~ms e de 847~ms com 150~ms por sentido.
 
 \subsection{Efeito da perda do SYN}
 
-A análise das capturas revelou um efeito que não havia sido previsto no
-planejamento. Quando o SYN ou o SYN-ACK se perde durante a abertura da
+A análise das capturas revelou um efeito que não havia sido previsto
+inicialmente. Quando o SYN ou o SYN-ACK se perde durante a abertura da
 conexão TCP, o handshake TLS das configurações pós-quânticas fica lento com
 muito mais frequência, mesmo que nenhum segmento do TLS se perca. A
 Figura~\ref{fig:syn} separa as tentativas com 5 e 10\% de perda conforme
@@ -1138,8 +1107,8 @@ X25519.
 \section{Discussão}
 \label{sec:discussao}
 
-Os resultados confirmam a hipótese da Seção~\ref{sec:rede}. Sem perda, a
-troca de chaves pós-quântica praticamente não altera o tempo do handshake,
+Os resultados confirmam a hipótese da Seção~\ref{sec:rede} de que, sem
+perda, a troca de chaves pós-quântica praticamente não altera o tempo do handshake,
 já que os bytes a mais custam pouco em uma rede com folga de banda e não
 acrescentam idas e voltas. Com perda, as configurações pós-quânticas, que
 dependem de mais segmentos, ficam lentas com mais frequência, e esse efeito
@@ -1161,7 +1130,7 @@ segmento, essa redução não faz diferença, mas o servidor pós-quântico só
 consegue enviar o primeiro dos dois segmentos da resposta e precisa esperar
 o ACK do cliente para enviar o segundo, o que acrescenta um RTT inteiro. A
 conexão da porta 51866 no cenário X25519MLKEM768 com 5\% de perda e 10~ms de
-atraso mostra essa sequência: depois da retransmissão do SYN e do SYN-ACK, o
+atraso mostra essa sequência. Depois da retransmissão do SYN e do SYN-ACK, o
 servidor enviou o primeiro segmento da resposta e só mandou o segundo depois
 do ACK do cliente, cerca de 20~ms mais tarde, que é o RTT dessa rede. A
 captura não mostra o valor interno da janela, mas o comportamento é o
@@ -1203,8 +1172,8 @@ mais afetado pela perda, com 42,0\% de handshakes lentos, porque essa
 estratégia faz o ClientHello passar do limite de um segmento por apenas
 3~bytes.
 
-Algumas limitações devem ser consideradas na interpretação desses
-resultados. A rede foi emulada em uma única máquina, com perdas
+Na interpretação desses resultados, é preciso considerar algumas
+limitações, a começar pela rede, que foi emulada em uma única máquina, com perdas
 independentes e sem reordenação, rajadas de perda ou variação de atraso,
 que são comuns em redes reais. Os mecanismos de recuperação observados,
 como a sonda TLP e a redução da janela após a perda do SYN, são os do
@@ -1361,10 +1330,7 @@ Acesso em: 15 nov. 2026.}
 and cryptography. \textbf{Journal of the ACM}, v. 56, n. 6, art. 34, 2009.
 DOI: 10.1145/1568318.1568324.}
 
-\refitem{RESCORLA, E. \textbf{The Transport Layer Security (TLS) protocol
-version 1.3}. RFC 8446. Internet Engineering Task Force, ago. 2018.
-Disponível em: \url{https://www.rfc-editor.org/info/rfc8446}. Acesso em:
-15 nov. 2026.}
+
 
 \refitem{RESCORLA, E. \textbf{The Transport Layer Security (TLS) protocol
 version 1.3}. RFC 9846. Internet Engineering Task Force, jul. 2026.
