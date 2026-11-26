@@ -1,131 +1,78 @@
-# Experimento: TLS 1.3 clássico x pós-quântico em redes degradadas
+# Código do experimento
 
-Mede o tempo do handshake TLS 1.3 com quatro configurações de troca de chaves,
-sob diferentes taxas de perda e atrasos emulados com `tc netem`.
+Esta pasta tem tudo o que foi usado para medir o tempo do handshake TLS 1.3
+com quatro configurações de troca de chaves, sob diferentes taxas de perda e
+atrasos emulados com o tc netem, uma ferramenta do Linux que acrescenta
+atraso e perda de pacotes ao tráfego de uma interface de rede. As instruções
+para rodar o experimento e conferir os resultados estão no
+[README da raiz do repositório](../README.md), e este aqui explica como cada
+parte funciona.
 
-| Configuração      | O que o cliente oferece                         |
-|-------------------|-------------------------------------------------|
-| X25519            | só X25519 (clássico)                            |
-| X25519MLKEM768    | só o grupo híbrido                              |
-| MLKEM768          | só ML-KEM-768 (pós-quântico puro)               |
-| Padrão OpenSSL    | padrão do OpenSSL 3.5: X25519MLKEM768 + X25519  |
+## Configurações comparadas
 
-Matriz: perdas de 0, 1, 5 e 10% × atrasos de 10, 50 e 150 ms por sentido ×
-4 configurações × 100 repetições = 4800 handshakes (cerca de 90 minutos).
-A pasta `resultados_30rep/` guarda uma primeira coleta com 30 repetições, que
-mostrou estimativas de cauda instáveis e motivou o aumento para 100.
+| Configuração | O que o cliente oferece ao servidor |
+|---|---|
+| X25519 | só o X25519, que é a troca de chaves clássica |
+| X25519MLKEM768 | só o grupo híbrido, que combina X25519 e ML-KEM-768 |
+| MLKEM768 | só o ML-KEM-768, sem a parte clássica |
+| Padrão do OpenSSL | o que o OpenSSL 3.5 envia por padrão, que são as chaves do X25519MLKEM768 e do X25519 juntas |
 
-## Preparação
-
-Em Linux com Python 3 e acesso ao serviço Docker, abra o diretório do experimento.
-O Docker compila a imagem com OpenSSL, o cliente e as ferramentas de análise.
-
-```sh
-git clone https://github.com/beatriz-repette/INE5429.git
-cd INE5429/experimento
-docker info
-docker build -t tls-pq-experimento .
-```
-
-## Reproduzir as estatísticas usando os dados existentes
-
-A coleta de 24/11/2026 está no commit `2937eab`. A partir de `experimento/`,
-copie apenas as entradas para uma pasta de trabalho. A análise usa as 48
-capturas e as durações medidas pelo cliente. Os resultados de referência ficam
-preservados em `resultados/`.
-
-```sh
-analise=$(mktemp -d -p "$PWD" reanalise.XXXXXX)
-cp -r resultados/capturas resultados/medicoes.csv "$analise/"
-docker run --rm -u $(id -u):$(id -g) -e MPLCONFIGDIR=/tmp -v "$PWD:/w" -w /w \
-    tls-pq-experimento python3 analisar.py "$(basename "$analise")"
-```
-
-Em um ambiente com tshark, pandas e matplotlib instalados, o último comando
-também pode ser substituído por `python3 analisar.py "$analise"`. Para conferir
-o resultado, compare `resumo.csv` e `lentos_por_perda.csv` com as tabelas do PDF.
-A matriz tem 48 linhas de resumo e 4.799 conexões concluídas em 4.800 tentativas.
-Na linha do padrão OpenSSL com 10% de perda, devem aparecer 126 conexões lentas
-em 300 e 286,74 ms na coluna `extra_medio_ms`. Essa coluna usa apenas os
-handshakes concluídos. Para o caso de erro, abra `MLKEM768_p5_a150.pcap` no
-Wireshark e aplique o filtro `tcp.port == 47956`.
-
-## Testar a coleta ou fazer uma nova medição
-
-O piloto testa as quatro configurações, com três tentativas por configuração e
-sem atraso ou perda adicionais. Use uma pasta nova para cada execução.
-
-```sh
-python3 executar.py --piloto --saida piloto-local
-```
-
-O resultado esperado é uma linha `3/3 ok` para cada configuração, quatro
-arquivos em `piloto-local/capturas/` e 12 medições em `piloto-local/medicoes.csv`.
-Para uma nova matriz completa, execute:
-
-```sh
-python3 executar.py --repeticoes 100 --saida coleta-local
-```
-
-O padrão sem `--repeticoes` é 30. Sem `--saida`, uma nova matriz grava em
-`resultados/` e pode sobrescrever a coleta publicada. Os tempos e as contagens
-de perdas variam entre coletas. Para analisar uma nova matriz, passe a pasta
-da coleta completa para `analisar.py`. O piloto serve para verificar o ambiente.
-
-## Compilar o relatório
-
-Com uma distribuição LaTeX que inclua pdfLaTeX, latexmk, TikZ, lmodern e
-suporte ao português, execute a partir de `experimento/`:
-
-```sh
-cd ..
-latexmk -pdf -interaction=nonstopmode -halt-on-error relatorio.tex
-```
-
-O arquivo de entrega é `relatorio.pdf`. As figuras da coleta principal já estão
-incluídas no repositório.
+Cada configuração foi testada com perdas de 0, 1, 5 e 10% e atrasos de 10,
+50 e 150 ms em cada sentido, com 100 tentativas por cenário, o que dá 48
+cenários e 4800 handshakes.
 
 ## Como funciona
 
+O experimento usa três containers Docker, com um roteador entre o cliente e
+o servidor.
+
 ```
 cliente (10.77.1.10) ── roteador ── servidor (10.77.2.10)
-                         tc netem (atraso + perda nos dois sentidos)
-                         tcpdump (pacotes que chegam, antes da perda)
+                          tc netem: atraso e perda nos dois sentidos
+                          tcpdump: grava os pacotes que chegam, antes da perda
 ```
 
-- `Dockerfile`: imagem Alpine 3.22 com OpenSSL 3.5 (ML-KEM nativo), tcpdump,
-  tshark, pandas e matplotlib.
-- `cliente.c`: cliente em C (libssl) que faz N handshakes completos, sem
-  retomada de sessão, e mede separadamente o handshake TCP (`tcp_ms`) e o
-  TLS (`tls_ms`). O cronômetro começa logo antes do `connect()`, então o
-  tempo de iniciar o programa não entra na medida.
-- `executar.py`: cria as redes e os containers, aplica cada cenário no
-  roteador, captura o tráfego e grava `resultados/medicoes.csv`.
-- `analisar.py`: lê as capturas com tshark (segmentos, bytes e
-  retransmissões por conexão), junta com as medições e gera
-  `resultados/resumo.csv` e os gráficos em `resultados/figuras/`.
+O roteador fica no meio porque, se a perda fosse aplicada direto no cliente
+ou no servidor, a captura só mostraria os pacotes que sobreviveram. Como o
+tcpdump grava os pacotes assim que eles chegam ao roteador, antes do netem
+decidir se vai descartá-los, os pacotes perdidos também aparecem nas
+capturas, e dá para ver cada retransmissão.
 
-Detalhes que garantem medidas corretas:
+Os arquivos desta pasta são os seguintes.
 
-- TSO/GSO/GRO desligados em todas as interfaces: sem isso, o kernel junta
-  segmentos em pacotes maiores que o MTU, e o netem descartaria vários
-  segmentos de uma vez.
-- `net.ipv4.tcp_no_metrics_save=1` no cliente e no servidor: o kernel não
-  reaproveita RTT e RTO de conexões anteriores, então cada tentativa é
-  independente.
-- O servidor não emite session tickets (`-num_tickets 0`) e o cliente
-  desliga o cache de sessão: todo handshake é completo.
-- A captura é feita no roteador, nos pacotes que chegam a ele, antes do
-  netem. Assim, os pacotes descartados pela "rede" também aparecem no
-  `.pcap`, e o tshark consegue identificar as retransmissões.
+- `Dockerfile` monta a imagem usada pelos três containers, com o Alpine 3.22,
+  o OpenSSL 3.5 (que já tem o ML-KEM), o tcpdump, o tshark, o pandas e o
+  matplotlib.
+- `cliente.c` é o cliente TLS, escrito em C com a libssl. Ele faz todas as
+  tentativas de um cenário em sequência, abrindo uma conexão nova a cada uma,
+  e mede separadamente o tempo da abertura TCP e o do handshake TLS. Como o
+  cronômetro começa logo antes do `connect()`, o tempo de iniciar o programa
+  não entra na medida.
+- `executar.py` cria as redes e os containers, aplica cada cenário de atraso
+  e perda no roteador, liga a captura, roda o cliente e grava as medições.
+- `analisar.py` lê as capturas com o tshark, conta os segmentos, os bytes e
+  as retransmissões de cada conexão, junta isso com as medições do cliente e
+  gera as tabelas e os gráficos do relatório.
 
-## Arquivos gerados
+## Cuidados para as medidas serem confiáveis
 
-- `resultados/ambiente.txt`: versões e configuração usadas.
-- `resultados/medicoes.csv`: uma linha por tentativa, como o cliente mediu.
-- `resultados/medicoes_com_capturas.csv`: o mesmo, mais segmentos, bytes e
-  retransmissões tirados da captura.
-- `resultados/resumo.csv`: estatísticas por cenário (média, mediana, desvio
-  padrão, p95, taxa de sucesso, % de conexões com retransmissão).
-- `resultados/capturas/*.pcap`: um arquivo por cenário (abre no Wireshark).
-- `resultados/figuras/`: gráficos em PDF (para o LaTeX) e PNG.
+Para que o resultado refletisse o comportamento de uma rede real, o ambiente
+foi ajustado em três pontos.
+
+- As otimizações de segmentação das placas virtuais (TSO, GSO e GRO) foram
+  desligadas, porque com elas o kernel junta vários segmentos em um pacote
+  maior que o MTU, e o netem descartaria todos de uma vez, o que não
+  aconteceria em uma rede de verdade.
+- O cliente e o servidor usam `net.ipv4.tcp_no_metrics_save=1`, para que o
+  kernel não reaproveite o RTT e o temporizador de retransmissão de uma
+  conexão na seguinte e cada tentativa comece do zero.
+- O servidor não envia session tickets (`-num_tickets 0`) e o cliente não
+  guarda sessões, de modo que todo handshake é completo, sem retomada.
+
+## Resultados
+
+Os dados da coleta usada no relatório estão em [resultados/](resultados/),
+que tem o seu próprio README explicando cada arquivo. A pasta
+`resultados_30rep/` guarda uma primeira coleta, com 30 tentativas por
+cenário, que não entrou no relatório porque as estimativas dos casos mais
+lentos ficaram instáveis com tão poucas tentativas.
